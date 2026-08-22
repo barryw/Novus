@@ -1,0 +1,64 @@
+from std::test::test import expect
+from amiga::raw::consts import TAG_DONE, TAG_IGNORE
+from amiga::raw::structs import TagItem
+from amiga::sys::hardware::mmu import MMU, SystemMMU, capabilities, has_mmu, has_mmu_library, page_size
+from amiga::sys::intuition::errors import IntuitionError, intuition_error_to_code
+from amiga::sys::resources import Resource
+from amiga::sys::utility::tags import make_tags
+
+// @covers amiga::sys::hardware::mmu::MMU()
+// @covers amiga::sys::hardware::mmu::capabilities()
+// @covers amiga::sys::hardware::mmu::has_mmu()
+// @covers amiga::sys::hardware::mmu::has_mmu_library()
+// @covers amiga::sys::hardware::mmu::page_size()
+@test("MMU helpers report a self-consistent machine configuration")
+pub fn mmu_contract() {
+    let detected = MMU()
+    let present = has_mmu()
+    let size = page_size()
+    let library = has_mmu_library()
+    let caps = capabilities()
+    expect(present == !matches!(detected, SystemMMU::None), "MMU type and presence agree")
+    expect((present && size >= 4096) || (!present && size == 0), "page size follows MMU presence")
+    expect(caps.page_size == size && caps.has_mmu_library == library, "capability snapshot matches accessors")
+}
+
+// @covers amiga::sys::resources::Resource::as_raw()
+// @covers amiga::sys::resources::Resource::open(Str)
+@test("Exec resources open as non-owning system handles")
+pub fn resource_contract() {
+    let cia = Resource::open("ciaa.resource")
+    expect(cia.is_some(), "CIA resource is present")
+    match cia {
+        Option::Some(resource) => expect(resource.as_raw() != null, "resource exposes raw system handle"),
+        Option::None => {}
+    }
+    expect(Resource::open("novus.definitely.missing.resource").is_none(), "missing resource is absent")
+}
+
+// @covers amiga::sys::utility::tags::make_tags(*TagItem, u32)
+@test("tag helper copies input and appends exactly one terminator")
+pub fn tag_contract() {
+    var input = [
+        TagItem { ti_Tag: TAG_IGNORE, ti_Data: 17 },
+        TagItem { ti_Tag: TAG_IGNORE, ti_Data: 23 },
+    ]
+    let tags = make_tags(&var input[0], 2).unwrap()
+    let ptr = tags.as_ptr()
+    expect(tags.len() == 3, "terminator extends tag list once")
+    unsafe {
+        expect(ptr[0].ti_Data == 17 && ptr[1].ti_Data == 23, "input tags are copied")
+        expect(ptr[2].ti_Tag == TAG_DONE && ptr[2].ti_Data == 0, "last tag terminates list")
+    }
+    expect(make_tags(null, 0).unwrap().len() == 1, "empty list contains only terminator")
+    expect(make_tags(null, 1).is_err(), "nonempty null input is rejected")
+}
+
+// @covers amiga::sys::intuition::errors::IntuitionError::message()
+// @covers amiga::sys::intuition::errors::intuition_error_to_code(IntuitionError)
+@test("Intuition errors expose stable codes and messages")
+pub fn intuition_error_contract() {
+    expect(intuition_error_to_code(IntuitionError::WindowOpenFailed) == -200, "first code is stable")
+    expect(intuition_error_to_code(IntuitionError::LibraryOpenFailed) == -209, "last code is stable")
+    expect(IntuitionError::BadDisplayMode.message() != null, "error has a message")
+}

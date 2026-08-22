@@ -26,6 +26,10 @@ static INTEROP_UI: StaticUi = StaticUi {
     menus: INTEROP_MENUS,
 }
 
+// @covers amiga::dos::File::create(Str)
+// @covers amiga::dos::File::system()
+// @covers amiga::sys::dos::file::OwnedFileHandle::as_raw()
+// @covers amiga::sys::dos::file::OwnedFileHandle::create(Str)
 @test("file creation returns a live owner")
 pub fn file_create_owner() {
     match File::create("RAM:novus-interop-create") {
@@ -34,6 +38,11 @@ pub fn file_create_owner() {
     }
 }
 
+// @covers amiga::dos::File::create(Str)
+// @covers amiga::dos::File::from_system(OwnedFileHandle)
+// @covers amiga::dos::File::into_system()
+// @covers amiga::dos::File::system()
+// @covers amiga::sys::dos::file::OwnedFileHandle::as_raw()
 @test("file ownership survives application and system wrappers")
 pub fn file_system_owner_roundtrip() {
     let file = match File::create("RAM:novus-interop-system") {
@@ -48,6 +57,11 @@ pub fn file_system_owner_roundtrip() {
     expect(adopted.system().as_raw() != 0, "system owner preserved")
 }
 
+// @covers amiga::dos::File::create(Str)
+// @covers amiga::dos::File::into_system()
+// @covers amiga::sys::dos::file::OwnedFileHandle::as_raw()
+// @covers amiga::sys::dos::file::OwnedFileHandle::from_raw(i32)
+// @covers amiga::sys::dos::file::OwnedFileHandle::into_raw()
 @test("file ownership survives a raw round trip")
 pub fn file_raw_owner_roundtrip() {
     let file = match File::create("RAM:novus-interop-raw") {
@@ -83,12 +97,24 @@ fn file_roundtrip() -> bool {
     }
 }
 
+// @covers amiga::dos::File::create(Str)
+// @covers amiga::dos::File::from_system(OwnedFileHandle)
+// @covers amiga::dos::File::into_system()
+// @covers amiga::dos::File::write(Slice<u8>)
+// @covers amiga::sys::dos::file::OwnedFileHandle::from_raw(i32)
+// @covers amiga::sys::dos::file::OwnedFileHandle::into_raw()
+// @covers amiga::sys::dos::file::OwnedFileHandle::write(*u8, u32)
+// @covers amiga::sys::dos::file::delete_file(Str)
 @test("file ownership survives application, system, and raw round trips")
 pub fn file_owner_roundtrip() {
     expect(file_roundtrip(), "file owner round-trips and closes exactly once")
     let _ = delete_file("RAM:novus-interop-test")
 }
 
+// @covers amiga::sys::exec::exec::SignalHandle::alloc()
+// @covers amiga::sys::exec::exec::SignalHandle::bit()
+// @covers amiga::sys::exec::exec::SignalHandle::from_raw(i8)
+// @covers amiga::sys::exec::exec::SignalHandle::into_raw()
 @test("signal ownership survives a raw round trip")
 pub fn signal_owner_roundtrip() {
     let signal = match SignalHandle::alloc() {
@@ -106,6 +132,10 @@ pub fn signal_owner_roundtrip() {
     }
 }
 
+// @covers amiga::sys::exec::exec::MsgPortHandle::as_raw()
+// @covers amiga::sys::exec::exec::MsgPortHandle::create()
+// @covers amiga::sys::exec::exec::MsgPortHandle::from_raw(*MsgPort)
+// @covers amiga::sys::exec::exec::MsgPortHandle::into_raw()
 @test("message-port ownership survives a raw round trip")
 pub fn message_port_owner_roundtrip() {
     let port = match MessagePort::create() {
@@ -122,6 +152,13 @@ pub fn message_port_owner_roundtrip() {
     }
 }
 
+// @covers amiga::storage::block_device::BlockDevice::geometry()
+// @covers amiga::storage::block_device::BlockDevice::open(Str, u32)
+// @covers amiga::storage::block_device::BlockDevice::system()
+// @covers amiga::storage::block_device::BlockGeometry::block_bytes()
+// @covers amiga::sys::device::block::DeviceRequest::block_geometry()
+// @covers amiga::sys::device::block::DeviceRequest::open_block(Str, u32)
+// @covers amiga::sys::device::block::SystemBlockGeometry::block_bytes()
 @test("block device remains usable after borrowing both lower layers")
 pub fn block_device_borrow_roundtrip() {
     match BlockDevice::open("trackdisk.device", 0) {
@@ -134,6 +171,11 @@ pub fn block_device_borrow_roundtrip() {
     }
 }
 
+// @covers amiga::sys::gadtools::builder::GadToolsControl::as_raw()
+// @covers amiga::sys::gadtools::builder::StaticGadToolsUi::open()
+// @covers amiga::sys::gadtools::builder::StaticGadToolsWindow::as_raw()
+// @covers amiga::sys::gadtools::builder::StaticGadToolsWindow::control(u16)
+// @covers amiga::sys::gadtools::builder::StaticGadToolsWindow::system()
 @test("application window borrows systems and raw views without losing ownership")
 pub fn window_borrow_roundtrip() {
     match INTEROP_UI.open() {
@@ -151,6 +193,10 @@ pub fn window_borrow_roundtrip() {
     }
 }
 
+// @covers amiga::sys::dos::list::DosDeviceEntry::as_raw()
+// @covers amiga::sys::dos::list::DosDeviceIter::next()
+// @covers amiga::sys::dos::list::DosDeviceList::iter()
+// @covers amiga::sys::dos::list::DosDeviceList::lock()
 @test("DOS-list entries expose native views tied to the list owner")
 pub fn dos_list_borrow_roundtrip() {
     match DosDeviceList::lock() {

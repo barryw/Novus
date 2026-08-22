@@ -40,21 +40,21 @@ from amiga::raw::exec import GetMsg, ReplyMsg, WaitPort
 /// ```
 pub struct RefreshGuard {
     /// The window value stored by `RefreshGuard`.
-    window: &Window,
+    window: *Window,
 }
 
 impl RefreshGuard {
     /// Create a new refresh guard and call BeginRefresh
     ///
     /// INTERNAL: This should only be called by parse_intui_message
-    fn new(win: &Window) -> RefreshGuard {
+    fn new(win: *Window) -> RefreshGuard {
         unsafe { BeginRefresh(win) }
         return RefreshGuard { window: win }
     }
 
     /// Get the window pointer for custom rendering
     pub fn window(&self) -> &Window {
-        return self.window
+        return unsafe { &*self.window }
     }
 }
 
@@ -394,7 +394,7 @@ impl WindowHandle {
         unsafe {
             // Cast Message to IntuiMessage and extract event
             let imsg: *IntuiMessage = (*IntuiMessage)msg
-            let event = parse_intui_message(imsg, &*self.window)
+            let event = parse_intui_message(imsg, self.window)
 
             // CRITICAL: Reply BEFORE processing to avoid deadlocks
             ReplyMsg(msg)
@@ -419,7 +419,7 @@ impl WindowHandle {
         unsafe {
             // Cast Message to IntuiMessage and extract event
             let imsg: *IntuiMessage = (*IntuiMessage)msg
-            let event = parse_intui_message(imsg, &*self.window)
+            let event = parse_intui_message(imsg, self.window)
 
             // CRITICAL: Reply BEFORE processing to avoid deadlocks
             ReplyMsg(msg)
@@ -821,7 +821,7 @@ impl Drop for WindowHandle {
 ///
 /// OPTIMIZATION: Only extract fields that are needed for each event type.
 /// This avoids unnecessary memory reads on 68k where every access counts.
-fn parse_intui_message(msg: *IntuiMessage, owner: &Window) -> WindowEvent {
+fn parse_intui_message(msg: *IntuiMessage, owner: *Window) -> WindowEvent {
     // Always need the class to determine event type
     let class = unsafe { (*msg).Class }
 
@@ -950,6 +950,11 @@ pub struct WindowBuilder {
     activate: bool,
 }
 
+fn update_flag(bits: u32, flag: u32, enabled: bool) -> u32 {
+    if enabled { return bits | flag }
+    return bits & (flag ^ $FFFFFFFF)
+}
+
 impl WindowBuilder {
     /// Create a new window builder with default settings
     ///
@@ -1031,33 +1036,25 @@ impl WindowBuilder {
 
     /// Add close gadget (X button)
     pub fn close_gadget(consuming self, enabled: bool) -> WindowBuilder {
-        if enabled {
-            self.flags = self.flags | WFLG_CLOSEGADGET
-        }
+        self.flags = update_flag(self.flags, WFLG_CLOSEGADGET, enabled)
         return self
     }
 
     /// Add drag bar for moving window
     pub fn drag_bar(consuming self, enabled: bool) -> WindowBuilder {
-        if enabled {
-            self.flags = self.flags | WFLG_DRAGBAR
-        }
+        self.flags = update_flag(self.flags, WFLG_DRAGBAR, enabled)
         return self
     }
 
     /// Add depth gadget for screen-to-front/back
     pub fn depth_gadget(consuming self, enabled: bool) -> WindowBuilder {
-        if enabled {
-            self.flags = self.flags | WFLG_DEPTHGADGET
-        }
+        self.flags = update_flag(self.flags, WFLG_DEPTHGADGET, enabled)
         return self
     }
 
     /// Add size gadget for resizing
     pub fn size_gadget(consuming self, enabled: bool) -> WindowBuilder {
-        if enabled {
-            self.flags = self.flags | WFLG_SIZEGADGET | WFLG_SIZEBRIGHT | WFLG_SIZEBBOTTOM
-        }
+        self.flags = update_flag(self.flags, WFLG_SIZEGADGET | WFLG_SIZEBRIGHT | WFLG_SIZEBBOTTOM, enabled)
         return self
     }
 
@@ -1081,65 +1078,49 @@ impl WindowBuilder {
 
     /// Enable mouse move events
     pub fn mouse_move(consuming self, enabled: bool) -> WindowBuilder {
-        if enabled {
-            self.idcmp = self.idcmp | IDCMP_MOUSEMOVE
-        }
+        self.idcmp = update_flag(self.idcmp, IDCMP_MOUSEMOVE, enabled)
         return self
     }
 
     /// Enable mouse button events
     pub fn mouse_buttons(consuming self, enabled: bool) -> WindowBuilder {
-        if enabled {
-            self.idcmp = self.idcmp | IDCMP_MOUSEBUTTONS
-        }
+        self.idcmp = update_flag(self.idcmp, IDCMP_MOUSEBUTTONS, enabled)
         return self
     }
 
     /// Enable raw key events
     pub fn raw_keys(consuming self, enabled: bool) -> WindowBuilder {
-        if enabled {
-            self.idcmp = self.idcmp | IDCMP_RAWKEY
-        }
+        self.idcmp = update_flag(self.idcmp, IDCMP_RAWKEY, enabled)
         return self
     }
 
     /// Enable vanilla key events (translated keypresses)
     pub fn vanilla_keys(consuming self, enabled: bool) -> WindowBuilder {
-        if enabled {
-            self.idcmp = self.idcmp | IDCMP_VANILLAKEY
-        }
+        self.idcmp = update_flag(self.idcmp, IDCMP_VANILLAKEY, enabled)
         return self
     }
 
     /// Enable resize events
     pub fn resize_events(consuming self, enabled: bool) -> WindowBuilder {
-        if enabled {
-            self.idcmp = self.idcmp | IDCMP_NEWSIZE
-        }
+        self.idcmp = update_flag(self.idcmp, IDCMP_NEWSIZE, enabled)
         return self
     }
 
     /// Enable refresh events (for GIMMEZEROZERO windows)
     pub fn refresh_events(consuming self, enabled: bool) -> WindowBuilder {
-        if enabled {
-            self.idcmp = self.idcmp | IDCMP_REFRESHWINDOW
-        }
+        self.idcmp = update_flag(self.idcmp, IDCMP_REFRESHWINDOW, enabled)
         return self
     }
 
     /// Enable menu pick events
     pub fn menu_events(consuming self, enabled: bool) -> WindowBuilder {
-        if enabled {
-            self.idcmp = self.idcmp | IDCMP_MENUPICK
-        }
+        self.idcmp = update_flag(self.idcmp, IDCMP_MENUPICK, enabled)
         return self
     }
 
     /// Enable gadget events
     pub fn gadget_events(consuming self, enabled: bool) -> WindowBuilder {
-        if enabled {
-            self.idcmp = self.idcmp | IDCMP_GADGETUP | IDCMP_GADGETDOWN
-        }
+        self.idcmp = update_flag(self.idcmp, IDCMP_GADGETUP | IDCMP_GADGETDOWN, enabled)
         return self
     }
 

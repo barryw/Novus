@@ -16,10 +16,14 @@ from amiga::sys::exec::channel import channel, bounded_channel, oneshot
 from amiga::sys::exec::channel import Sender, Receiver, BoundedSender, BoundedReceiver
 from amiga::sys::exec::channel import OneshotSender, OneshotReceiver
 from amiga::sys::exec::channel import PortHandoff, PortOwnership, complete_handoff
+from amiga::sys::exec::channel import ChannelError, take_over_port
 from std::test::test import expect, expect_true, expect_false, expect_eq, fail
 from amiga::sys::exec import spawn_task_fn_with_ptr, ProcessHandle, receive_startup_data
-from amiga::raw::exec import Wait, GetMsg, ReplyMsg, FindTask, WaitPort, FreeMem
+from amiga::raw::exec import Wait, GetMsg, ReplyMsg, FindTask, WaitPort, FreeMem, CreateMsgPort, DeleteMsgPort
 from amiga::raw::structs import MsgPort, Message, Process
+
+static var DRAIN_SUM: i32 = 0
+fn add_drained(value: i32) { DRAIN_SUM = DRAIN_SUM + value }
 
 // ============================================================================
 // Bounded channel responder task
@@ -60,8 +64,11 @@ fn bounded_responder_task() -> i32 {
 // Unbounded Channel Tests
 // ============================================================================
 
+// @covers amiga::sys::exec::channel::channel()
+// @covers amiga::sys::exec::channel::ChannelError::message()
 @test("Create unbounded channel")
 pub fn test_unbounded_creation() {
+    expect((u32)ChannelError::NoMemory.message() != 0, "channel errors have messages")
     let result = channel::<i32>()
     match result {
         Result::Err(_) => fail("Failed to create channel"),
@@ -72,16 +79,18 @@ pub fn test_unbounded_creation() {
     }
 }
 
+// @covers amiga::sys::exec::channel::Sender::send(T)
+// @covers amiga::sys::exec::channel::Sender::is_valid()
+// @covers amiga::sys::exec::channel::Receiver::recv()
+// @covers amiga::sys::exec::channel::Receiver::try_recv()
 @test("Unbounded: send and receive a value")
 pub fn test_unbounded_send_recv() {
     let (tx, rx) = channel::<i32>().unwrap()
 
+    expect(tx.is_valid(), "sender is valid")
     let _ = tx.send(42)
-
-    match rx.try_recv() {
-        Option::None => fail("try_recv returned None after send"),
-        Option::Some(value) => expect_eq(value, 42, "received value")
-    }
+    expect_eq(rx.recv(), 42, "blocking receive returns queued value")
+    expect(rx.try_recv().is_none(), "channel is empty after receive")
 }
 
 @test("Unbounded: FIFO ordering of messages")
@@ -126,6 +135,8 @@ pub fn test_unbounded_empty_channel() {
     }
 }
 
+// @covers amiga::sys::exec::channel::Receiver::signal()
+// @covers amiga::sys::exec::channel::Receiver::check(u32)
 @test("Unbounded: signal mask is valid")
 pub fn test_unbounded_signal_mask() {
     let (tx, rx) = channel::<i32>().unwrap()
@@ -138,8 +149,11 @@ pub fn test_unbounded_signal_mask() {
     // Verify it's a power of 2 (only one bit set)
     let is_power_of_2 = (mask & (mask - 1)) == 0
     expect_true(is_power_of_2, "signal mask is a power of 2")
+    expect_true(rx.check(mask), "receiver recognizes its signal")
+    expect_false(rx.check(0), "receiver rejects unrelated signals")
 }
 
+// @covers amiga::sys::exec::channel::Receiver::drain(fn(T))
 @test("Unbounded: drain processes all messages")
 pub fn test_unbounded_drain() {
     let (tx, rx) = channel::<i32>().unwrap()
@@ -148,23 +162,12 @@ pub fn test_unbounded_drain() {
     let _ = tx.send(200)
     let _ = tx.send(300)
 
-    // Drain them manually (lambdas need to capture context which is complex)
-    var sum: i32 = 0
-    var draining = true
-    while draining {
-        match rx.try_recv() {
-            Option::Some(value) => {
-                sum = sum + value
-            },
-            Option::None => {
-                draining = false
-            }
-        }
-    }
-
-    expect_eq(sum, 600, "sum of drained values")
+    DRAIN_SUM = 0
+    rx.drain(add_drained)
+    expect_eq(DRAIN_SUM, 600, "sum of drained values")
 }
 
+// @covers amiga::sys::exec::channel::Sender::clone()
 @test("Unbounded: sender clone works")
 pub fn test_unbounded_sender_clone() {
     let (tx, rx) = channel::<i32>().unwrap()
@@ -194,6 +197,23 @@ pub fn test_unbounded_sender_clone() {
 
     expect_true(got_first, "got value from original sender")
     expect_true(got_second, "got value from cloned sender")
+}
+
+// @covers amiga::sys::exec::channel::Sender::from_port(*MsgPort)
+@test("Unbounded: sender can borrow an existing port")
+pub fn test_sender_from_port() {
+    let port = CreateMsgPort()
+    expect(port != null, "raw port allocates")
+    let sender = Sender::<i32>::from_port(port)
+    expect(sender.is_valid() && sender.send(321).is_ok(), "borrowed sender queues a value")
+    let message = GetMsg(port)
+    expect(message != null, "borrowed port receives the value")
+    if message != null {
+        let payload = (*i32)((u32)message + @sizeof(Message))
+        expect(*payload == 321, "borrowed sender preserves payload")
+        unsafe { FreeMem((*u8)message, @sizeof(Message) + @sizeof(i32)) }
+    }
+    DeleteMsgPort(port)
 }
 
 @test("Unbounded: multiple recv on empty channel returns None")
@@ -232,6 +252,7 @@ pub fn test_unbounded_multiple_recv_on_empty() {
 // Bounded Channel Tests
 // ============================================================================
 
+// @covers amiga::sys::exec::channel::bounded_channel()
 @test("Create bounded channel")
 pub fn test_bounded_creation() {
     let result = bounded_channel::<i32>()
@@ -244,18 +265,20 @@ pub fn test_bounded_creation() {
     }
 }
 
+// @covers amiga::sys::exec::channel::BoundedSender::is_valid()
+// @covers amiga::sys::exec::channel::BoundedSender::try_send(T)
+// @covers amiga::sys::exec::channel::BoundedReceiver::recv()
+// @covers amiga::sys::exec::channel::BoundedReceiver::try_recv()
 @test("Bounded: send and receive a value")
 pub fn test_bounded_send_recv() {
     let (tx, rx) = bounded_channel::<i32>().unwrap()
 
     // Use try_send to avoid blocking in single-process test
+    expect(tx.is_valid(), "bounded sender is valid")
     let sent = tx.try_send(55)
     expect_true(sent.is_ok(), "try_send succeeded")
-
-    match rx.try_recv() {
-        Option::None => fail("try_recv returned None"),
-        Option::Some(value) => expect_eq(value, 55, "received value")
-    }
+    expect_eq(rx.recv(), 55, "bounded blocking receive returns queued value")
+    expect(rx.try_recv().is_none(), "bounded channel is empty after receive")
 }
 
 @test("Bounded: FIFO ordering with try_send")
@@ -298,6 +321,8 @@ pub fn test_bounded_empty_channel() {
     }
 }
 
+// @covers amiga::sys::exec::channel::BoundedReceiver::signal()
+// @covers amiga::sys::exec::channel::BoundedReceiver::check(u32)
 @test("Bounded: signal mask is valid")
 pub fn test_bounded_signal_mask() {
     let (tx, rx) = bounded_channel::<i32>().unwrap()
@@ -309,8 +334,19 @@ pub fn test_bounded_signal_mask() {
     // Verify it's a power of 2 (only one bit set)
     let is_power_of_2 = (mask & (mask - 1)) == 0
     expect_true(is_power_of_2, "signal mask is a power of 2")
+    expect_true(rx.check(mask), "bounded receiver recognizes its signal")
+    expect_false(rx.check(0), "bounded receiver rejects unrelated signals")
 }
 
+// @covers amiga::sys::exec::channel::BoundedSender::send(T)
+// @covers amiga::sys::exec::channel::BoundedReceiver::detach()
+// @covers amiga::sys::exec::channel::BoundedReceiver::port()
+// @covers amiga::sys::exec::channel::PortHandoff::new(*MsgPort)
+// @covers amiga::sys::exec::channel::PortHandoff::port()
+// @covers amiga::sys::exec::channel::PortHandoff::wait_for_ready()
+// @covers amiga::sys::exec::channel::PortOwnership::port()
+// @covers amiga::sys::exec::channel::PortOwnership::signal()
+// @covers amiga::sys::exec::channel::complete_handoff(*PortHandoff)
 @test("Bounded: blocking send with responder task")
 pub fn test_bounded_blocking_send() {
     var (tx, rx) = bounded_channel::<i32>().unwrap()
@@ -323,6 +359,7 @@ pub fn test_bounded_blocking_send() {
             return
         }
     }
+    expect(handoff.port() == rx.port(), "handoff retains the transferred port")
 
     // Detach the port from rx - child will own it now
     // This prevents rx.drop() from calling DeleteMsgPort on a port
@@ -351,10 +388,23 @@ pub fn test_bounded_blocking_send() {
     }
 }
 
+// @covers amiga::sys::exec::channel::take_over_port(*MsgPort)
+@test("Bounded: detached port can be taken over")
+pub fn test_take_over_port() {
+    var (tx, rx) = bounded_channel::<i32>().unwrap()
+    let port = rx.detach()
+    match take_over_port(port) {
+        Result::Ok(mask) => expect(mask != 0, "taken-over port receives a signal"),
+        Result::Err(_) => fail("detached port takeover failed"),
+    }
+    DeleteMsgPort(port)
+}
+
 // ============================================================================
 // Oneshot Channel Tests
 // ============================================================================
 
+// @covers amiga::sys::exec::channel::oneshot()
 @test("Create oneshot channel")
 pub fn test_oneshot_creation() {
     let result = oneshot::<i32>()
@@ -367,6 +417,9 @@ pub fn test_oneshot_creation() {
     }
 }
 
+// @covers amiga::sys::exec::channel::OneshotSender::send(T)
+// @covers amiga::sys::exec::channel::OneshotReceiver::recv()
+// @covers amiga::sys::exec::channel::OneshotReceiver::try_recv()
 @test("Oneshot: send and receive a value")
 pub fn test_oneshot_send_recv() {
     let (tx, rx) = oneshot::<i32>().unwrap()
@@ -374,13 +427,8 @@ pub fn test_oneshot_send_recv() {
     let sent = tx.send(777)
     expect_true(sent.is_ok(), "send succeeded")
 
-    match rx.try_recv() {
-        Result::Err(_) => fail("try_recv failed"),
-        Result::Ok(value) => match value {
-            Option::None => fail("try_recv returned None"),
-            Option::Some(item) => expect_eq(item, 777, "received value")
-        }
-    }
+    expect_eq(rx.recv().unwrap(), 777, "blocking oneshot receive returns queued value")
+    expect(rx.try_recv().is_err(), "oneshot cannot receive twice")
 }
 
 @test("Oneshot: can only send once")
@@ -430,6 +478,7 @@ pub fn test_oneshot_empty_channel() {
     }
 }
 
+// @covers amiga::sys::exec::channel::OneshotSender::is_sent()
 @test("Oneshot: is_sent tracks send state")
 pub fn test_oneshot_is_sent() {
     let (tx, rx) = oneshot::<i32>().unwrap()
@@ -442,6 +491,7 @@ pub fn test_oneshot_is_sent() {
     expect_true(after, "is_sent true after send")
 }
 
+// @covers amiga::sys::exec::channel::OneshotReceiver::is_complete()
 @test("Oneshot: is_complete tracks receive state")
 pub fn test_oneshot_is_complete() {
     let (tx, rx) = oneshot::<i32>().unwrap()
@@ -457,6 +507,7 @@ pub fn test_oneshot_is_complete() {
     expect_true(after, "is_complete true after recv")
 }
 
+// @covers amiga::sys::exec::channel::OneshotReceiver::signal()
 @test("Oneshot: signal mask is valid")
 pub fn test_oneshot_signal_mask() {
     let (tx, rx) = oneshot::<i32>().unwrap()

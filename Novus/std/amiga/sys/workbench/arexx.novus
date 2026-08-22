@@ -29,9 +29,9 @@ from amiga::sys::exec::errors import ExecError
 from std::core import Error
 from std::string import Str, String
 from amiga::raw::structs import MsgPort, RexxMsg, Message, Node
-from amiga::raw::exec import CreateMsgPort, DeleteMsgPort, GetMsg, ReplyMsg, WaitPort, FindPort, PutMsg, AllocMem, FreeMem, AddPort, RemPort
+from amiga::raw::exec import CreateMsgPort, DeleteMsgPort, GetMsg, ReplyMsg, WaitPort, FindPort, FindTask, PutMsg, AllocMem, FreeMem, CopyMem, AddPort, RemPort
 from amiga::raw::rexxsyslib import CreateArgstring, DeleteArgstring, LengthArgstring, CreateRexxMsg, DeleteRexxMsg, IsRexxMsg
-from amiga::raw::consts import MEMF_PUBLIC, MEMF_CLEAR, RXCOMM, RXFB_RESULT, RXARGMASK, RXCODEMASK
+from amiga::raw::consts import MEMF_PUBLIC, MEMF_CLEAR, NT_MESSAGE, RXCOMM, RXFB_RESULT, RXARGMASK, RXCODEMASK
 
 // ARexx-specific error types
 /// Reports failures from arexx operations.
@@ -197,13 +197,7 @@ impl ARexxPort {
             return Result::Err(ARexxError::OutOfMemory)
         }
 
-        // Copy name
-        for i in 0..name.len {
-            match name.get(i) {
-                Option::Some(byte) => unsafe { name_ptr[i] = byte },
-                Option::None => {},
-            }
-        }
+        unsafe { CopyMem(name.ptr, name_ptr, name.len) }
 
         // Set port name and make public
         unsafe {
@@ -311,11 +305,14 @@ impl ARexxPort {
     /// # Parameters
     /// * `cmd` - The `&var ARexxCommand` value used as cmd.
     pub fn reply_ok(&var self, cmd: &var ARexxCommand) {
+        let message = cmd.msg
+        if message == null { return }
         unsafe {
-            cmd.msg.rm_Result1 = 0
-            cmd.msg.rm_Result2 = 0
+            message.rm_Result1 = 0
+            message.rm_Result2 = 0
         }
-        ReplyMsg((*Message)cmd.msg)
+        cmd.msg = null
+        ReplyMsg((*Message)message)
     }
 
     // Reply to a command with a result string
@@ -325,16 +322,19 @@ impl ARexxPort {
     /// * `cmd` - The `&var ARexxCommand` value used as cmd.
     /// * `result` - The `Str` value used as result.
     pub fn reply_result(&var self, cmd: &var ARexxCommand, result: Str) {
+        let message = cmd.msg
+        if message == null { return }
         unsafe {
-            cmd.msg.rm_Result1 = 0
+            message.rm_Result1 = 0
             if result.len > 0 {
                 let result_argstring = CreateArgstring(result.ptr, result.len)
-                cmd.msg.rm_Result2 = (i32)result_argstring
+                message.rm_Result2 = (i32)result_argstring
             } else {
-                cmd.msg.rm_Result2 = 0
+                message.rm_Result2 = 0
             }
         }
-        ReplyMsg((*Message)cmd.msg)
+        cmd.msg = null
+        ReplyMsg((*Message)message)
     }
 
     // Reply to a command with an error code
@@ -345,11 +345,14 @@ impl ARexxPort {
     /// * `severity` - The `i32` value used as severity.
     /// * `code` - The `i32` value used as code.
     pub fn reply_error(&var self, cmd: &var ARexxCommand, severity: i32, code: i32) {
+        let message = cmd.msg
+        if message == null { return }
         unsafe {
-            cmd.msg.rm_Result1 = severity
-            cmd.msg.rm_Result2 = code
+            message.rm_Result1 = severity
+            message.rm_Result2 = code
         }
-        ReplyMsg((*Message)cmd.msg)
+        cmd.msg = null
+        ReplyMsg((*Message)message)
     }
 
     // Get raw port pointer
@@ -433,6 +436,11 @@ pub fn arexx_call(target: Str, command: Str) -> Result<String, ARexxError> {
     unsafe {
         rexx_msg.rm_Args[0] = cmd_argstring
         rexx_msg.rm_Action = (i32)RXCOMM | (1 << (i32)RXFB_RESULT)
+        // Direct host calls do not pass through RexxMaster, so supply the
+        // delivery metadata that IsRexxMsg() requires on received commands.
+        rexx_msg.rm_Node.mn_Node.ln_Type = (u8)NT_MESSAGE
+        rexx_msg.rm_Node.mn_Node.ln_Name = (*i8)"REXX".as_ptr()
+        rexx_msg.rm_TaskBlock = (*u8)FindTask(null)
     }
 
     // Send message
@@ -457,6 +465,7 @@ pub fn arexx_call(target: Str, command: Str) -> Result<String, ARexxError> {
                     Result::Ok(value) => { result_string = value },
                     Result::Err(_) => { error_code = -1 },
                 }
+                DeleteArgstring(result_ptr)
             }
         } else {
             error_code = rc

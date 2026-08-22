@@ -58,9 +58,11 @@ class NdkTestEvidenceTests(unittest.TestCase):
                              [runtime_report, unmeasured_runtime_report], "A4000")
 
             self.assertEqual([], result["errors"])
+            self.assertEqual("A4000", result["configuration"])
             self.assertEqual(1, result["summary"]["functions_complete"], result)
             self.assertEqual(12, result["functions"][0]["size_bytes"])
             self.assertEqual(7, result["functions"][0]["speed_us"])
+            self.assertNotIn("tests", result["functions"][0]["runtime"][0])
 
             wrong_machine = measure(raw, [test], [compile_report], [runtime_report], "A1200")
             self.assertFalse(wrong_machine["functions"][0]["runtime_verified"])

@@ -34,6 +34,27 @@ pub fn main() -> i32 {
     }
 
     [Fact]
+    public void BuildIr_GenericMethod_SubstitutesFunctionPointerParameters()
+    {
+        var module = BuildIr("""
+            struct Receiver<T> { value: T }
+            impl<T> Receiver<T> {
+                fn drain(&self, handler: fn(T)) {}
+            }
+            pub fn main() -> i32 {
+                let receiver = Receiver { value: (u32)0 }
+                unsafe { receiver.drain(@zeroed(fn(u32))) }
+                return 0
+            }
+            """);
+
+        var drain = Assert.Single(module.Functions,
+            function => function.Name.Contains("drain", StringComparison.Ordinal) && function.BasicBlocks.Count > 0);
+        var callback = Assert.IsType<IrFunctionPointerType>(drain.Parameters[1].Type);
+        Assert.Equal(IrIntType.U32, Assert.Single(callback.ParameterTypes));
+    }
+
+    [Fact]
     public void BuildIr_GenericFunction_MultipleTypes_Compiles()
     {
         var source = @"

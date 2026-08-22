@@ -26,7 +26,7 @@ from amiga::raw::graphics import LoadView, WaitTOF, WaitBlit
 from amiga::raw::intuition import ViewAddress, RethinkDisplay
 from amiga::raw::exec import CacheClearU
 from amiga::sys::hardware::registers import is_register_safe_for_copper, color_register, rgb12, CUSTOM_BASE, COP1LC, DMACON, SPR0PTH, SPR0PTL, SPR1PTH, SPR1PTL, SPR2PTH, SPR2PTL, SPR3PTH, SPR3PTL, SPR4PTH, SPR4PTL, SPR5PTH, SPR5PTL, SPR6PTH, SPR6PTL, SPR7PTH, SPR7PTL, BPL1PTH, BPL1PTL, BPL2PTH, BPL2PTL, BPL3PTH, BPL3PTL, BPL4PTH, BPL4PTL, BPL5PTH, BPL5PTL, BPL6PTH, BPL6PTL, BPL7PTH, BPL7PTL, BPL8PTH, BPL8PTL
-from amiga::sys::hardware::chipset import SystemChipset
+from amiga::sys::hardware::chipset import CHIPSET, SystemChipset
 
 // Copper control registers
 /// Defines `COPJMP1`, the copjmp1 value.
@@ -203,6 +203,20 @@ impl CopperListBuilder {
             return Result::Err(CopperError::BackwardsWait)
         }
 
+        // The Copper compares only eight vertical bits. Cross line 255 first,
+        // then encode the wrapped line for the PAL/NTSC lines above 255.
+        if vpos > 255 {
+            if self.last_vpos <= 255 {
+                self.wait_internal(255, 226, false)?
+            }
+            self.last_vpos = 0
+            self.last_hpos = 0
+            let result = self.wait_internal(vpos - 256, hpos, wait_blitter)
+            self.last_vpos = vpos
+            self.last_hpos = hpos
+            return result
+        }
+
         // Ensure capacity
         if self.count >= self.capacity {
             if !self.grow() {
@@ -276,6 +290,16 @@ impl CopperListBuilder {
             return Result::Err(CopperError::InvalidWaitPosition)
         }
 
+        var encoded_vpos = vpos
+        if vpos > 255 {
+            if self.last_vpos <= 255 {
+                self.wait_internal(255, 226, false)?
+            }
+            self.last_vpos = 256
+            self.last_hpos = 0
+            encoded_vpos = vpos - 256
+        }
+
         // Ensure capacity
         if self.count >= self.capacity {
             if !self.grow() {
@@ -290,7 +314,7 @@ impl CopperListBuilder {
         // HP = horizontal position (bits 7-1 of first word)
         // Bit 0 of first word = 1 (indicates compare instruction)
         // Bit 0 of second word = 1 (SKIP vs WAIT discriminator)
-        let vp = ((u32)vpos) & $FF
+        let vp = ((u32)encoded_vpos) & $FF
         let hp = ((u32)hpos) & $FE  // Must be even
         var vp_shift = vp
         vp_shift <<= 8  // Shift left by 8 bits
@@ -451,10 +475,8 @@ impl CopperListBuilder {
     /// Returns error if plane index is out of range or pointer is misaligned.
     @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
     pub fn move_bitplane_ptr(&var self, plane: u8, addr: *u8) -> Result<(), CopperError> {
-        // Validate bitplane index
-        // TODO: Could check actual chipset and enforce 0-5 for OCS/ECS, 0-7 for AGA
-        // For now, allow 0-7 (AGA max) and let hardware ignore planes 6-7 on OCS/ECS
-        if plane > 7 {
+        // OCS/ECS expose six bitplane pointers; BPL7/8 exist only on AGA.
+        if plane > 7 || (plane > 5 && !matches!(CHIPSET(), SystemChipset::AGA)) {
             return Result::Err(CopperError::InvalidPlaneIndex)
         }
 
@@ -633,6 +655,9 @@ impl CopperListHandle {
     /// The caller must ensure the instruction index is valid and points to a color MOVE.
     @suppress("W0001", "Integer literals are signed but arithmetic with u32 is safe here")
     pub fn update_color_at(&var self, instruction_idx: u32, new_color: u16) {
+        if self.memory == null || instruction_idx >= self.size / 4 {
+            return
+        }
         unsafe {
             // Wait for vertical blank to avoid glitches from copper reading while we write
             WaitTOF()
@@ -661,6 +686,9 @@ impl CopperListHandle {
     /// The copper list must remain valid for as long as it's active.
     /// You should keep the CopperList handle in scope.
     pub fn activate(&var self) {
+        if self.active {
+            return
+        }
         unsafe {
             // Save the current view so we can restore it later
             self.saved_view = ViewAddress()
@@ -710,7 +738,10 @@ impl CopperListHandle {
     /// # Safety
     /// This is unsafe because it directly writes to hardware registers.
     /// The caller must ensure the new copper list remains valid.
-    pub fn switch_to(&var self, new_list: &CopperListHandle) {
+    pub fn switch_to(&var self, new_list: &var CopperListHandle) {
+        if !self.active || new_list.memory == null {
+            return
+        }
         unsafe {
             // Wait for current copper to finish current frame
             WaitTOF()
@@ -734,6 +765,10 @@ impl CopperListHandle {
 
             // Wait for copper to switch to new list
             WaitTOF()
+
+            new_list.saved_view = self.saved_view
+            new_list.active = true
+            self.active = false
         }
     }
 

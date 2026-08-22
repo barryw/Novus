@@ -4,6 +4,7 @@ from amiga::raw::consts import DOS_STDPKT, NP_Entry, NP_Name, NP_StackSize, TAG_
 from amiga::raw::dos import AbortPkt, AllocDosObject, CreateNewProcTags, Delay, FreeDosObject, ReplyPkt, SendPkt, WaitPkt
 from amiga::raw::exec import FindTask
 from amiga::raw::structs import DosPacket, Message, Process, StandardPacket
+from amiga::sys::dos::handler import Packet
 
 static var PACKET_CHILD_RUNS: u32 = 0
 static var PACKET_DELAY_TICKS: i32 = 0
@@ -11,8 +12,9 @@ static var PACKET_DELAY_TICKS: i32 = 0
 fn packet_handler() -> i32 {
     PACKET_CHILD_RUNS++
     if PACKET_DELAY_TICKS > 0 { Delay(PACKET_DELAY_TICKS) }
-    let packet = WaitPkt()
-    if packet != null { ReplyPkt(packet, 12345, -54321) }
+    var packet = Packet::wait()
+    let exact = packet.action() == 77 && packet.arg(1) == 101 && packet.arg(7) == 707 && packet.arg(0) == 0
+    packet.reply(if exact { 12345 } else { -1 }, if exact { -54321 } else { -2 })
     return 0
 }
 
@@ -46,7 +48,9 @@ fn packet_roundtrip(name: Str, abort: bool) -> bool {
     message.mn_Length = (u16)@sizeof(StandardPacket)
     packet.dp_Link = message
     packet.dp_Port = &var parent.pr_MsgPort
-    packet.dp_Type = 0
+    packet.dp_Type = 77
+    packet.dp_Arg1 = 101
+    packet.dp_Arg7 = 707
     SendPkt(packet, &var child.pr_MsgPort, &var parent.pr_MsgPort)
     if abort { AbortPkt(&var child.pr_MsgPort, packet) }
     let returned = WaitPkt()
@@ -65,6 +69,10 @@ fn packet_roundtrip(name: Str, abort: bool) -> bool {
 }
 
 // @covers-ndk function|dos.library|SendPkt
+// @covers amiga::sys::dos::handler::Packet::action()
+// @covers amiga::sys::dos::handler::Packet::arg(u8)
+// @covers amiga::sys::dos::handler::Packet::reply(i32, i32)
+// @covers amiga::sys::dos::handler::Packet::wait()
 // @ndk-side-effects Sends a fully initialized StandardPacket asynchronously to a real child Process, which returns exact primary and secondary results to the parent process port before both packet and child are released
 @test("dos.library SendPkt delivers an asynchronous packet")
 pub fn dos_send_packet() {

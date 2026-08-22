@@ -8,6 +8,7 @@ from amiga::raw::graphics import WaitTOF
 from amiga::raw::intuition import ActivateWindow, CloseWindow, OpenWindowTagList
 from amiga::raw::structs import FileRequester, InputEvent, IORequest, IOStdReq, TagItem, Window
 from amiga::sys::exec::thread import run_thread_loop, spawn_thread
+from amiga::sys::asl::requester import AslError, FileRequesterHandle
 
 const ASL_CONTROL_WORK: u32 = 1 << 17
 const USER_DATA: u32 = $4E4F5655
@@ -112,6 +113,12 @@ fn asl_control_tick(_state: *u8) -> bool {
         }
     }
 
+    // The A1200 guest-service process does not own the active window. Bring the
+    // requester forward before injecting Escape so input.device can target it.
+    if ACTIVE_REQUEST != null && ACTIVATION_PARENT == null {
+        ActivateAslRequest(ACTIVE_REQUEST)
+    }
+
     if CONTROL_ABORT_TARGET && ACTIVE_REQUEST != null {
         for var attempt: u32 = 0; attempt < 120; attempt++ {
             AbortAslRequest(ACTIVE_REQUEST)
@@ -124,9 +131,15 @@ fn asl_control_tick(_state: *u8) -> bool {
         }
     }
 
-    for var attempt: u32 = 0; attempt < 60 && !REQUEST_RETURNED; attempt++ {
+    for var attempt: u32 = 0; attempt < 12 && !REQUEST_RETURNED; attempt++ {
         ESCAPE_WRITTEN = inject_escape() || ESCAPE_WRITTEN
         for var frame: u32 = 0; frame < 10; frame++ { WaitTOF() }
+    }
+    // Synthetic input is not consumed by every emulator/ASL combination. Do
+    // not leave the modal request and guest command stuck when that happens.
+    if !REQUEST_RETURNED && ACTIVE_REQUEST != null {
+        AbortAslRequest(ACTIVE_REQUEST)
+        ABORT_CALLED = true
     }
     return false
 }
@@ -219,7 +232,7 @@ pub fn asl_free_file_request() {
 }
 
 // @covers-ndk function|asl.library|RequestFile
-// @ndk-side-effects Opens the real legacy file requester, injects an Escape key through input.device from a separate Exec task, waits for that task, verifies cancellation, and frees the requester
+// @ndk-side-effects Opens the real legacy file requester, requests cancellation from a separate Exec task with an injected Escape key and a bounded AbortAslRequest fallback for emulators that do not deliver synthetic input, waits for that task, verifies cancellation, and frees the requester
 @test("asl.library RequestFile handles an asynchronous cancel")
 pub fn asl_request_file() {
     let requester = AllocFileRequest()
@@ -243,7 +256,7 @@ pub fn asl_request_file() {
 }
 
 // @covers-ndk function|asl.library|AslRequest
-// @ndk-side-effects Opens a tagged real file requester through the tag-list API, injects Escape through input.device from a separate Exec task, waits for completion, verifies cancellation, and frees it
+// @ndk-side-effects Opens a tagged real file requester through the tag-list API, requests cancellation from a separate Exec task with an injected Escape key and a bounded AbortAslRequest fallback for emulators that do not deliver synthetic input, waits for completion, verifies cancellation, and frees it
 @test("asl.library AslRequest handles an asynchronous cancel")
 pub fn asl_request_a() {
     let requester = make_file_request()
@@ -271,7 +284,7 @@ pub fn asl_request_a() {
 }
 
 // @covers-ndk function|asl.library|AslRequestTags
-// @ndk-side-effects Opens a tagged real file requester through the varargs stub, injects Escape through input.device from a separate Exec task, waits for completion, verifies cancellation, and frees it
+// @ndk-side-effects Opens a tagged real file requester through the varargs stub, requests cancellation from a separate Exec task with an injected Escape key and a bounded AbortAslRequest fallback for emulators that do not deliver synthetic input, waits for completion, verifies cancellation, and frees it
 @test("asl.library AslRequestTags handles an asynchronous cancel")
 pub fn asl_request_tags() {
     let requester = make_file_request()
@@ -319,7 +332,7 @@ pub fn asl_abort_request() {
 }
 
 // @covers-ndk function|asl.library|ActivateAslRequest
-// @ndk-side-effects Opens a parent window and real modal file requester, steals activation to the parent from another Exec task, invokes the target call, verifies Intuition moves activation away from the parent, injects Escape, and frees all resources
+// @ndk-side-effects Opens a parent window and real modal file requester, steals activation to the parent from another Exec task, invokes the target call, verifies Intuition moves activation away from the parent, requests cancellation with injected Escape and a bounded AbortAslRequest fallback, and frees all resources
 @test("asl.library ActivateAslRequest restores requester activation")
 pub fn asl_activate_request() {
     let parent = open_parent_window()
@@ -341,4 +354,32 @@ pub fn asl_activate_request() {
     if parent != null { CloseWindow(parent) }
     settle_requester()
     expect(activated, "the target call returns activation from the parent to the live requester")
+}
+
+// @covers amiga::sys::asl::requester::AslError::message()
+// @covers amiga::sys::asl::requester::FileRequesterHandle::as_raw()
+// @covers amiga::sys::asl::requester::FileRequesterHandle::choose(*Window, Str, Str, Str, bool)
+// @covers amiga::sys::asl::requester::FileRequesterHandle::new()
+@test("owned ASL requester opens, cancels asynchronously, and releases")
+pub fn asl_owned_requester() {
+    expect(AslError::AllocationFailed.message() != null, "ASL errors have messages")
+    let requester = FileRequesterHandle::new().unwrap()
+    expect(requester.as_raw() != null, "owned requester exposes raw handle")
+    reset_control((*u8)requester.as_raw(), null, false)
+    var cancelled = false
+    match spawn_thread("Novus ASL owner closer", asl_controller, 8192) {
+        Result::Ok(var thread) => {
+            let started = thread.signal(ASL_CONTROL_WORK)
+            match requester.choose(null, "Novus owned requester", "RAM:", "novus.txt", false) {
+                Result::Ok(selection) => { cancelled = started && selection.is_none() },
+                Result::Err(_) => {}
+            }
+            REQUEST_RETURNED = true
+            thread.wait()
+        },
+        Result::Err(_) => {}
+    }
+    clear_control()
+    settle_requester()
+    expect(cancelled && ESCAPE_WRITTEN, "owned modal requester reports user cancellation")
 }

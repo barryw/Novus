@@ -1,8 +1,27 @@
 from std::core import Option, Result
 from amiga::raw::structs import ExecBase
-from amiga::sys::dos import FileSystemRegistry, MountedFileSystem
+from amiga::sys::dos import FileSystemHandler, FileSystemOperationError, FileSystemRegistry, FileSystemRegistryError, MountedFileSystem
 from std::test::test import expect
 
+// @covers amiga::sys::dos::filesystem::FileSystemHandler::matches_family(u32)
+// @covers amiga::sys::dos::filesystem::FileSystemHandler::segment()
+// @covers amiga::sys::dos::filesystem::FileSystemRegistry::entry_count()
+// @covers amiga::sys::dos::filesystem::FileSystemRegistry::find(u32)
+// @covers amiga::sys::dos::filesystem::FileSystemRegistry::open()
+// @covers amiga::sys::dos::filesystem::FileSystemRegistry::as_raw()
+// @covers amiga::sys::dos::filesystem::FileSystemHandler::dos_type()
+// @covers amiga::sys::dos::filesystem::FileSystemHandler::find_live(u32)
+// @covers amiga::sys::dos::filesystem::FileSystemHandler::global_vec()
+// @covers amiga::sys::dos::filesystem::FileSystemHandler::patch_flags()
+// @covers amiga::sys::dos::filesystem::FileSystemHandler::priority()
+// @covers amiga::sys::dos::filesystem::FileSystemHandler::stack_size()
+// @covers amiga::sys::dos::filesystem::FileSystemHandler::version()
+// @covers amiga::sys::dos::filesystem::FileSystemOperationError::message()
+// @covers amiga::sys::dos::filesystem::FileSystemRegistryError::message()
+// @covers amiga::sys::dos::filesystem::MountedFileSystem::name()
+// @covers amiga::sys::dos::filesystem::MountedFileSystem::open(Str)
+// @covers amiga::sys::dos::filesystem::MountedFileSystem::system()
+// @covers amiga::sys::dos::list::DeviceProcess::port()
 @test("FileSystem.resource entries are copied safely")
 pub fn filesystem_registry() {
     let initial_nest = task_nest_count()
@@ -13,20 +32,31 @@ pub fn filesystem_registry() {
             return
         },
     }
+    expect(registry.as_raw() != null, "registry exposes permanent resource")
     expect(registry.entry_count() > 0, "registry contains handlers")
     expect(task_nest_count() == initial_nest, "entry count restores scheduler nesting")
     expect(dos_handler_available(&registry), "registry exposes a DOS-family handler")
+    expect(FileSystemHandler::find_live($444F5300).is_some(), "live DOS-family handler is discoverable")
     expect(task_nest_count() == initial_nest, "handler copy restores scheduler nesting")
     expect(registry.find($FFFFFFFF).is_none(), "missing handler returns None")
     expect(task_nest_count() == initial_nest, "handler queries restore scheduler nesting")
     expect(mounted_filesystem_resolves(), "mounted filesystem owns its resolved process")
     expect(mounted_filesystem_resolves(), "resolved process cleanup permits reacquisition")
     expect(invalid_mount_name_rejected(), "mounted filesystem requires a device colon")
+    expect(FileSystemOperationError::InvalidName.message() != null, "filesystem operation errors have messages")
+    expect(FileSystemRegistryError::ResourceUnavailable.message() != null, "registry errors have messages")
 }
 
 fn dos_handler_available(registry: &FileSystemRegistry) -> bool {
     return match registry.find($444F5300) {
-        Option::Some(handler) => handler.segment().is_addressable(),
+        Option::Some(handler) => {
+            let _version = handler.version()
+            let _patch_flags = handler.patch_flags()
+            let _global_vec = handler.global_vec()
+            let _priority = handler.priority()
+            let _stack_size = handler.stack_size()
+            return handler.segment().is_addressable() && (handler.dos_type() & $FFFFFF00) == $444F5300
+        },
         Option::None => false,
     }
 }

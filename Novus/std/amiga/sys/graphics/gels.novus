@@ -1730,7 +1730,8 @@ impl AnimObBuilder {
 
         // Build all components
         var comp_idx: u32 = 0
-        var first_comp: *AnimComp = null
+        var first_sequence_comp: *AnimComp = null
+        var previous_sequence_comp: *AnimComp = null
 
         // Get cached gels pointer
         let gels_ptr = self.gels
@@ -1739,7 +1740,10 @@ impl AnimObBuilder {
 
         for seq_i in 0..sequence_count {
             // Get sequence frame count from unsafe block
-            let seq_frame_count = unsafe { (&sequences_ptr[seq_i]).frame_count }
+            let seq_frame_count = unsafe { sequences_ptr[seq_i].frame_count }
+            if seq_frame_count == 0 {
+                continue
+            }
             let seq_first_comp_idx = comp_idx
 
             for frame_i in 0..seq_frame_count {
@@ -1862,15 +1866,10 @@ impl AnimObBuilder {
                     owned_entry.save_buffer = save_ptr
                 }
 
-                // Set first component for AnimOb
-                if first_comp == null {
-                    first_comp = comp
-                }
-
                 comp_idx = comp_idx + 1
             }
 
-            // Link components in this sequence into a ring
+            // Frames in one component sequence form a circular NextSeq ring.
             let seq_last_comp_idx = comp_idx - 1
             for i in seq_first_comp_idx..comp_idx {
                 // Calculate next and prev indices for circular ring
@@ -1895,15 +1894,29 @@ impl AnimObBuilder {
                     let next_comp = next_entry.comp
                     let prev_comp = prev_entry.comp
 
-                    ring_comp.NextComp = next_comp
-                    ring_comp.PrevComp = prev_comp
+                    ring_comp.NextSeq = next_comp
+                    ring_comp.PrevSeq = prev_comp
                 }
+            }
+
+            // Only the initially active frame from each sequence participates
+            // in the null-terminated component list.
+            unsafe {
+                let sequence_comp = owned_data[seq_first_comp_idx].comp
+                if first_sequence_comp == null {
+                    first_sequence_comp = sequence_comp
+                }
+                if previous_sequence_comp != null {
+                    previous_sequence_comp.NextComp = sequence_comp
+                    sequence_comp.PrevComp = previous_sequence_comp
+                }
+                previous_sequence_comp = sequence_comp
             }
         }
 
         // Set HeadComp
         unsafe {
-            animob.HeadComp = first_comp
+            animob.HeadComp = first_sequence_comp
         }
 
         // Clean up builder allocations
@@ -1917,6 +1930,8 @@ impl AnimObBuilder {
         if self.sequences != null {
             FreeVec((*u8)self.sequences)
         }
+        self.sequences = null
+        self.sequence_count = 0
 
         // Get rast_port and view_port from gels pointer
         let rp = unsafe { (*gels_ptr).rast_port }
@@ -1934,6 +1949,24 @@ impl AnimObBuilder {
             state: AnimObState::Ready,
             buffers_allocated: false,
         })
+    }
+}
+
+impl Drop for AnimObBuilder {
+    fn drop(&var self) {
+        if self.sequences == null {
+            return
+        }
+        for seq_i in 0..self.sequence_count {
+            unsafe {
+                if self.sequences[seq_i].frames != null {
+                    FreeVec((*u8)self.sequences[seq_i].frames)
+                }
+            }
+        }
+        FreeVec((*u8)self.sequences)
+        self.sequences = null
+        self.sequence_count = 0
     }
 }
 
@@ -1976,20 +2009,8 @@ impl AnimObHandle {
             AnimObState::Active => return Result::Err(GelError::AlreadyActive),
             AnimObState::Building => return Result::Err(GelError::NotReady),
             AnimObState::Ready => {
-                // Add all BOBs to GEL list first
-                for i in 0..self.comp_count {
-                    unsafe {
-                        AddBob(self.comp_data[i].bob, self.rast_port)
-                    }
-                }
-
-                // Add AnimOb to animation list
-                AddAnimOb(self.anim_ob, gels.anim_key, gels.rast_port)
-
-                // Update anim_key if this is the first animation
-                if gels.anim_key == null {
-                    gels.anim_key = self.anim_ob
-                }
+                // AddAnimOb links the active BOB from each sequence itself.
+                AddAnimOb(self.anim_ob, &var gels.anim_key, gels.rast_port)
 
                 gels.inc_active()
                 self.state = AnimObState::Active
@@ -2011,10 +2032,13 @@ impl AnimObHandle {
             AnimObState::Ready => return Result::Err(GelError::NotActive),
             AnimObState::Building => return Result::Err(GelError::NotReady),
             AnimObState::Active => {
-                // Remove all BOBs from GEL list
-                for i in 0..self.comp_count {
-                    unsafe {
-                        RemIBob(self.comp_data[i].bob, self.rast_port, self.view_port)
+                // Only the active component from each sequence is in the GEL list.
+                unsafe {
+                    var component = self.anim_ob.HeadComp
+                    while component != null {
+                        let next = component.NextComp
+                        RemIBob(component.AnimBob, self.rast_port, self.view_port)
+                        component = next
                     }
                 }
                 WaitBlit()
@@ -2156,8 +2180,8 @@ impl AnimObHandle {
     pub fn set_collision_masks(&var self, me_mask: u16, hit_mask: u16) {
         for i in 0..self.comp_count {
             unsafe {
-                *self.comp_data[i].vsprite.MeMask = me_mask
-                *self.comp_data[i].vsprite.HitMask = hit_mask
+                self.comp_data[i].vsprite.MeMask = me_mask
+                self.comp_data[i].vsprite.HitMask = hit_mask
             }
         }
     }
@@ -2275,7 +2299,7 @@ impl GelsSystem {
             return
         }
         if self.anim_key != null {
-            Animate(self.anim_key, self.rast_port)
+            Animate(&var self.anim_key, self.rast_port)
         }
     }
 }

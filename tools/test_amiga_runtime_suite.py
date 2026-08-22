@@ -37,6 +37,12 @@ class _Machine:
 
 
 class AmigaRuntimeSuiteTests(unittest.TestCase):
+    def test_available_memory_tolerates_a_transient_guest_command_failure(self):
+        responses = [RuntimeError("transient"), {"output": "total  10\n"},
+                     {"output": "total  12\n"}]
+        with patch.object(runtime, "guest_command", side_effect=responses):
+            self.assertEqual(12, runtime.available_memory(_Machine()))
+
     def test_disable_patchasl_finds_breaks_and_verifies_process(self):
         machine = _Machine()
         status = {"output": (

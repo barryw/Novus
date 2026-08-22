@@ -1,0 +1,23 @@
+from std::test::test import expect
+from amiga::sys::timer import AsyncTimer, Duration
+
+// @covers amiga::sys::timer::device::AsyncTimer::new()
+// @covers amiga::sys::timer::device::AsyncTimer::start(Duration)
+// @covers amiga::sys::timer::device::AsyncTimer::check()
+// @covers amiga::sys::timer::device::AsyncTimer::signal_mask()
+// @covers amiga::sys::timer::device::AsyncTimer::abort()
+// @covers amiga::sys::timer::device::AsyncTimer::get_time()
+@test("system async timers expose signals aborts and time")
+pub fn system_async_timer_contracts() {
+    match AsyncTimer::new() {
+        Result::Ok(timer) => {
+            var value = timer
+            expect(value.signal_mask() != 0, "timer owns a signal")
+            expect(value.get_time().is_ok(), "time query succeeds while idle")
+            value.start(Duration::millis(100))
+            value.abort()
+            expect(!value.check(), "aborted request is no longer pending")
+        },
+        Result::Err(_) => expect(false, "system async timer should open"),
+    }
+}

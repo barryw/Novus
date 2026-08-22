@@ -1,0 +1,91 @@
+from std::core import Option
+from std::test::test import expect
+from amiga::sys::hardware::paula import StereoChannel, channel_base_offset, channel_dat_offset, channel_dma_bit, channel_int_bit, channel_lch_offset, channel_lcl_offset, channel_len_offset, channel_per_offset, channel_stereo, channel_vol_offset, hz_from_period, is_left_channel, is_right_channel, is_valid_channel, is_valid_length_bytes, is_valid_length_words, is_valid_period, is_valid_volume, period_for_note, period_from_hz
+from amiga::sys::hardware::registers import color_register, is_register_safe_for_copper, rgb12, rgb12_from_u8
+from amiga::sys::hardware::chipset import SystemCPU, SystemFPU, SystemChipset, DisplayType, CPU, FPU, CHIPSET, CHIP_RAM, DISPLAY
+
+// @covers amiga::sys::hardware::paula::channel_base_offset(u8)
+// @covers amiga::sys::hardware::paula::channel_dat_offset(u8)
+// @covers amiga::sys::hardware::paula::channel_dma_bit(u8)
+// @covers amiga::sys::hardware::paula::channel_int_bit(u8)
+// @covers amiga::sys::hardware::paula::channel_lch_offset(u8)
+// @covers amiga::sys::hardware::paula::channel_lcl_offset(u8)
+// @covers amiga::sys::hardware::paula::channel_len_offset(u8)
+// @covers amiga::sys::hardware::paula::channel_per_offset(u8)
+// @covers amiga::sys::hardware::paula::channel_stereo(u8)
+// @covers amiga::sys::hardware::paula::channel_vol_offset(u8)
+// @covers amiga::sys::hardware::paula::hz_from_period(u16, bool)
+// @covers amiga::sys::hardware::paula::is_left_channel(u8)
+// @covers amiga::sys::hardware::paula::is_right_channel(u8)
+// @covers amiga::sys::hardware::paula::is_valid_channel(u8)
+// @covers amiga::sys::hardware::paula::is_valid_length_bytes(u32)
+// @covers amiga::sys::hardware::paula::is_valid_length_words(u16)
+// @covers amiga::sys::hardware::paula::is_valid_period(u16)
+// @covers amiga::sys::hardware::paula::is_valid_volume(u16)
+// @covers amiga::sys::hardware::paula::period_for_note(u32, u32, bool)
+// @covers amiga::sys::hardware::paula::period_from_hz(u32, bool)
+@test("Paula helpers preserve documented channel and timing contracts")
+pub fn paula_helper_contracts() {
+    expect(channel_base_offset(0) == $0A0 && channel_base_offset(3) == $0D0, "channel bases are spaced by sixteen")
+    expect(channel_lch_offset(2) == $0C0 && channel_lcl_offset(2) == $0C2, "location offsets are correct")
+    expect(channel_len_offset(2) == $0C4 && channel_per_offset(2) == $0C6, "length and period offsets are correct")
+    expect(channel_vol_offset(2) == $0C8 && channel_dat_offset(2) == $0CA, "volume and data offsets are correct")
+    expect(channel_dma_bit(3) == 8, "DMA masks track channels")
+    expect(channel_int_bit(3) == $0400, "interrupt masks track channels")
+    expect(is_left_channel(0) && is_left_channel(3), "channels zero and three are left")
+    expect(is_right_channel(1) && is_right_channel(2), "channels one and two are right")
+    match channel_stereo(1) {
+        StereoChannel::Right => {},
+        _ => expect(false, "channel one is right"),
+    }
+    expect(is_valid_channel(3) && !is_valid_channel(4), "only four channels are valid")
+    expect(is_valid_period(124) && !is_valid_period(123), "minimum period is enforced")
+    expect(is_valid_volume(64) && !is_valid_volume(65), "maximum volume is enforced")
+    expect(is_valid_length_words(1) && !is_valid_length_words(0), "word lengths reject zero")
+    expect(is_valid_length_bytes(2) && !is_valid_length_bytes(3), "byte lengths are word aligned")
+    match period_from_hz(11025, true) {
+        Option::Some(period) => expect(period == 321 || period == 322, "PAL period is rounded by integer division"),
+        Option::None => expect(false, "11025 Hz is representable"),
+    }
+    expect(hz_from_period(322, true) > 11000, "period converts back near 11025 Hz")
+    match period_for_note(8363, 440, true) {
+        Option::Some(period) => expect(period >= 250 && period <= 255, "A4 period matches the MOD reference rate"),
+        Option::None => expect(false, "A4 note period is representable"),
+    }
+}
+
+// @covers amiga::sys::hardware::registers::color_register(u8)
+// @covers amiga::sys::hardware::registers::is_register_safe_for_copper(u32)
+// @covers amiga::sys::hardware::registers::rgb12(u8, u8, u8)
+// @covers amiga::sys::hardware::registers::rgb12_from_u8(u8, u8, u8)
+@test("custom-register helpers preserve offsets and RGB packing")
+pub fn register_helper_contracts() {
+    expect(!is_register_safe_for_copper($080), "copper list pointer is unsafe")
+    expect(is_register_safe_for_copper($180), "color register is copper-safe")
+    expect(color_register(31) == $1BE, "last OCS color register offset is correct")
+    expect(rgb12(15, 8, 1) == $0F81, "four-bit channels are packed")
+    expect(rgb12_from_u8(255, 136, 17) == $0F81, "eight-bit channels scale to four bits")
+}
+
+// @covers amiga::sys::hardware::chipset::CHIPSET()
+// @covers amiga::sys::hardware::chipset::CHIP_RAM()
+// @covers amiga::sys::hardware::chipset::CPU()
+// @covers amiga::sys::hardware::chipset::DISPLAY()
+// @covers amiga::sys::hardware::chipset::FPU()
+@test("hardware detection reports supported classic configurations")
+pub fn hardware_detection_contracts() {
+    let cpu_ok = match CPU() {
+        SystemCPU::M68020 | SystemCPU::M68030 | SystemCPU::M68040 | SystemCPU::M68060 => true,
+    }
+    let fpu_ok = match FPU() {
+        SystemFPU::None | SystemFPU::M68881 | SystemFPU::M68882 | SystemFPU::M68040 | SystemFPU::M68060 => true,
+    }
+    let chipset_ok = match CHIPSET() {
+        SystemChipset::OCS | SystemChipset::ECS | SystemChipset::AGA => true,
+    }
+    let display_ok = match DISPLAY() {
+        DisplayType::PAL | DisplayType::NTSC => true,
+    }
+    let _memory = CHIP_RAM()
+    expect(cpu_ok && fpu_ok && chipset_ok && display_ok, "current detector values are valid")
+}

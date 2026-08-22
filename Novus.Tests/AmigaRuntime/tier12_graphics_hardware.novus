@@ -1,0 +1,206 @@
+from std::test::test import expect
+from amiga::raw::consts import BMF_CLEAR, BMF_DISPLAYABLE
+from amiga::raw::graphics import AllocBitMap, FreeBitMap, InitRastPort, ReadPixel, WaitBlit
+from amiga::raw::structs import RastPort
+from amiga::sys::graphics::bitmap import BitMapHandle
+from amiga::sys::graphics::blitter import BlitOp, BlitterError, BlitterGuard, BlitterOps
+from amiga::sys::graphics::copper import CopperError, CopperListBuilder
+from amiga::sys::graphics::font import FontHandle
+from amiga::sys::graphics::sprite import SpriteData
+from amiga::sys::graphics::os_sprite import OsSpriteHandle
+from amiga::sys::graphics::text import draw_char, draw_char_at, draw_text, draw_text_at
+from amiga::sys::graphics::text import font_baseline, font_height, font_width, get_font, get_text_style
+from amiga::sys::graphics::text import reset_text_style, set_bold, set_font, set_italic, set_text_style, set_underline, text_width
+from amiga::sys::intuition import ScreenHandle, WindowHandle
+
+// @covers amiga::sys::graphics::bitmap::BitMapHandle::alloc(u32, u32, u32, u32, *BitMap)
+// @covers amiga::sys::graphics::bitmap::BitMapHandle::as_raw()
+// @covers amiga::sys::graphics::bitmap::BitMapHandle::from_raw(*BitMap)
+// @covers amiga::sys::graphics::bitmap::BitMapHandle::into_raw()
+// @covers amiga::sys::graphics::bitmap::BitMapHandle::mark_blitter_pending()
+// @covers amiga::sys::graphics::bitmap::BitMapHandle::wait_blit()
+// @covers amiga::sys::graphics::blitter::BlitterError::message()
+// @covers amiga::sys::graphics::blitter::BlitterGuard::acquire()
+// @covers amiga::sys::graphics::blitter::BlitterGuard::is_busy()
+// @covers amiga::sys::graphics::blitter::BlitterGuard::wait()
+// @covers amiga::sys::graphics::blitter::BlitterOps::clear_rect(&var BitMapHandle, u16, u16, u16, u16)
+// @covers amiga::sys::graphics::blitter::BlitterOps::copy_masked(&BitMapHandle, &BitMapHandle, u16, u16, &var BitMapHandle, u16, u16, u16, u16)
+// @covers amiga::sys::graphics::blitter::BlitterOps::copy_rect(&BitMapHandle, u16, u16, &var BitMapHandle, u16, u16, u16, u16)
+// @covers amiga::sys::graphics::blitter::BlitterOps::copy_rect_op(&BitMapHandle, u16, u16, &var BitMapHandle, u16, u16, u16, u16, BlitOp)
+// @covers amiga::sys::graphics::blitter::BlitterOps::copy_shifted(&BitMapHandle, u16, u16, &var BitMapHandle, u16, u16, u16, u16, u8)
+// @covers amiga::sys::graphics::blitter::BlitterOps::draw_line(&var BitMapHandle, i16, i16, i16, i16, u16)
+// @covers amiga::sys::graphics::blitter::BlitterOps::draw_line_xor(&var BitMapHandle, i16, i16, i16, i16, u16)
+// @covers amiga::sys::graphics::blitter::BlitterOps::fill_plane(&var BitMapHandle, u8, u16, u16, u16, u16, u16)
+// @covers amiga::sys::graphics::blitter::BlitterOps::fill_rect(&var BitMapHandle, u16, u16, u16, u16, u16)
+// @covers amiga::sys::graphics::blitter::BlitterOps::invert_rect(&var BitMapHandle, u16, u16, u16, u16)
+// @covers amiga::sys::graphics::blitter::BlitterOps::set_rect(&var BitMapHandle, u16, u16, u16, u16)
+@test("bitmap ownership and blitter operations produce stable chip pixels")
+pub fn bitmap_blitter_contracts() {
+    let flags = BMF_CLEAR | BMF_DISPLAYABLE
+    var src = BitMapHandle::alloc(64, 32, 2, flags, null).unwrap()
+    var dst = BitMapHandle::alloc(64, 32, 2, flags, null).unwrap()
+    var mask = BitMapHandle::alloc(64, 32, 1, flags, null).unwrap()
+    expect(src.as_raw() != null && dst.as_raw() != null, "displayable bitmaps allocate")
+    {
+        let guard = BlitterGuard::acquire()
+        let _ = guard.is_busy()
+        guard.wait()
+    }
+    expect(BlitterOps::set_rect(&var src, 0, 0, 16, 8).is_ok(), "set fills source")
+    src.wait_blit()
+    expect(BlitterOps::fill_rect(&var dst, 0, 0, 16, 8, $AAAA).is_ok(), "pattern fill runs")
+    dst.wait_blit()
+    expect(BlitterOps::clear_rect(&var dst, 0, 0, 16, 8).is_ok(), "clear runs")
+    dst.wait_blit()
+    expect(BlitterOps::fill_plane(&var dst, 0, 0, 0, 16, 8, $FFFF).is_ok(), "single-plane fill runs")
+    dst.wait_blit()
+    expect(BlitterOps::copy_rect(&src, 0, 0, &var dst, 16, 0, 16, 8).is_ok(), "copy runs")
+    dst.wait_blit()
+    expect(BlitterOps::copy_rect_op(&src, 0, 0, &var dst, 32, 0, 16, 8, BlitOp::Xor).is_ok(), "logical copy runs")
+    dst.wait_blit()
+    expect(BlitterOps::copy_shifted(&src, 0, 0, &var dst, 0, 10, 16, 4, 1).is_ok(), "shifted copy runs")
+    dst.wait_blit()
+    expect(BlitterOps::set_rect(&var mask, 0, 0, 16, 8).is_ok(), "mask fills")
+    mask.wait_blit()
+    expect(BlitterOps::copy_masked(&src, &mask, 0, 0, &var dst, 16, 10, 16, 8).is_ok(), "masked copy runs")
+    dst.wait_blit()
+    expect(BlitterOps::invert_rect(&var dst, 16, 10, 16, 8).is_ok(), "invert runs")
+    dst.wait_blit()
+    expect(BlitterOps::draw_line(&var dst, 0, 20, 30, 20, $FFFF).is_ok(), "line blit runs")
+    dst.wait_blit()
+    expect(BlitterOps::draw_line_xor(&var dst, 0, 22, 30, 22, $FFFF).is_ok(), "XOR line blit runs")
+    dst.wait_blit()
+    var rp: RastPort = @zeroed(RastPort)
+    InitRastPort(&var rp)
+    rp.BitMap = dst.as_raw()
+    WaitBlit()
+    expect(ReadPixel(&var rp, 20, 2) >= 0, "blitter result is readable")
+    expect(BlitterOps::fill_plane(&var dst, 9, 0, 0, 16, 1, 0).is_err(), "invalid plane is rejected")
+    expect(BlitterError::OutOfBounds.message() != null, "blitter errors have messages")
+
+    let raw = BitMapHandle::alloc(16, 8, 1, flags, null).unwrap().into_raw()
+    match BitMapHandle::from_raw(raw) {
+        Result::Ok(var owner) => {
+            owner.mark_blitter_pending()
+            owner.wait_blit()
+            expect(owner.as_raw() == raw, "bitmap ownership round-trips")
+        },
+        Result::Err(_) => {
+            if raw != null { FreeBitMap(raw) }
+            expect(false, "owned raw bitmap is accepted")
+        },
+    }
+    expect(BitMapHandle::from_raw(null).is_err(), "null bitmap is rejected")
+}
+
+// @covers amiga::sys::graphics::text::draw_char(*RastPort, u8)
+// @covers amiga::sys::graphics::text::draw_char_at(*RastPort, i16, i16, u8)
+// @covers amiga::sys::graphics::text::draw_text(*RastPort, *u8, u16)
+// @covers amiga::sys::graphics::text::draw_text_at(*RastPort, i16, i16, *u8, u16)
+// @covers amiga::sys::graphics::text::font_baseline(*RastPort)
+// @covers amiga::sys::graphics::text::font_height(*RastPort)
+// @covers amiga::sys::graphics::text::font_width(*RastPort)
+// @covers amiga::sys::graphics::text::get_font(*RastPort)
+// @covers amiga::sys::graphics::text::get_text_style(*RastPort)
+// @covers amiga::sys::graphics::text::reset_text_style(*RastPort)
+// @covers amiga::sys::graphics::text::set_bold(*RastPort, bool)
+// @covers amiga::sys::graphics::text::set_font(*RastPort, *TextFont)
+// @covers amiga::sys::graphics::text::set_italic(*RastPort, bool)
+// @covers amiga::sys::graphics::text::set_text_style(*RastPort, u32)
+// @covers amiga::sys::graphics::text::set_underline(*RastPort, bool)
+// @covers amiga::sys::graphics::text::text_width(*RastPort, *u8, u16)
+@test("text helpers measure, style, and render through a live RastPort")
+pub fn graphics_text_contracts() {
+    let window = WindowHandle::simple("Tier12 Text", 240, 100).unwrap()
+    let rp = window.rastport()
+    let font = FontHandle::open_rom("topaz.font", 8).unwrap()
+    let old = set_font(rp, font.as_raw())
+    expect(get_font(rp) == font.as_raw(), "font setter installs font")
+    expect(font_height(rp) == 8 && font_width(rp) > 0 && font_baseline(rp) < 8, "font metrics are exposed")
+    expect(text_width(rp, "Novus", 5) > 0, "text is measured")
+    set_text_style(rp, 0)
+    set_bold(rp, true)
+    set_italic(rp, true)
+    set_underline(rp, true)
+    expect((get_text_style(rp) & 7) != 0, "styles enable")
+    set_bold(rp, false)
+    set_italic(rp, false)
+    set_underline(rp, false)
+    reset_text_style(rp)
+    expect(get_text_style(rp) == 0, "styles reset")
+    expect(draw_text_at(rp, 10, 20, "Novus", 5) >= 0, "positioned text draws")
+    expect(draw_text(rp, "!", 1) >= 0, "cursor text draws")
+    expect(draw_char_at(rp, 10, 35, 65) >= 0 && draw_char(rp, 66) >= 0, "characters draw")
+    if old != null { let _ = set_font(rp, old) }
+}
+
+// @covers amiga::sys::graphics::copper::CopperError::message()
+// @covers amiga::sys::graphics::copper::CopperListBuilder::build()
+// @covers amiga::sys::graphics::copper::CopperListBuilder::move_bitplane_ptr(u8, *u8)
+// @covers amiga::sys::graphics::copper::CopperListBuilder::move_color(u8, u16)
+// @covers amiga::sys::graphics::copper::CopperListBuilder::move_register(u32, u16)
+// @covers amiga::sys::graphics::copper::CopperListBuilder::move_sprite_ptr(u8, *u8)
+// @covers amiga::sys::graphics::copper::CopperListBuilder::new()
+// @covers amiga::sys::graphics::copper::CopperListBuilder::skip(u16, u16)
+// @covers amiga::sys::graphics::copper::CopperListBuilder::wait(u16, u16)
+// @covers amiga::sys::graphics::copper::CopperListBuilder::wait_vblank()
+// @covers amiga::sys::graphics::copper::CopperListBuilder::wait_with_blitter(u16, u16)
+// @covers amiga::sys::graphics::copper::CopperListHandle::activate()
+// @covers amiga::sys::graphics::copper::CopperListHandle::deactivate()
+// @covers amiga::sys::graphics::copper::CopperListHandle::deactivate_without_restore()
+// @covers amiga::sys::graphics::copper::CopperListHandle::ptr()
+// @covers amiga::sys::graphics::copper::CopperListHandle::size()
+// @covers amiga::sys::graphics::copper::CopperListHandle::switch_to(&var CopperListHandle)
+// @covers amiga::sys::graphics::copper::CopperListHandle::update_color_at(u32, u16)
+@test("Copper builders encode wrapped waits and transfer active ownership")
+pub fn copper_list_contracts() {
+    var sprite_words: [u16] = [0; 8]
+    var builder = CopperListBuilder::new()
+    expect(builder.wait(10, 0).is_ok(), "early wait encodes")
+    expect(builder.move_color(0, $123).is_ok(), "color move encodes")
+    expect(builder.move_register($182, $456).is_ok(), "safe register move encodes")
+    expect(builder.move_sprite_ptr(0, (*u8)&var sprite_words).is_ok(), "sprite pointer splits")
+    expect(builder.move_bitplane_ptr(7, (*u8)&var sprite_words).is_ok(), "AGA eighth bitplane pointer splits")
+    expect(builder.wait_with_blitter(100, 0).is_ok(), "blitter wait encodes")
+    expect(builder.skip(120, 0).is_ok(), "skip encodes")
+    expect(builder.wait_vblank().is_ok(), "line-262 wait crosses the eight-bit vertical wrap")
+    expect(builder.wait(10, 1).is_err() && builder.move_sprite_ptr(8, (*u8)&var sprite_words).is_err(), "invalid Copper inputs are rejected")
+    var first = builder.build().unwrap()
+    expect(first.ptr() != null && first.size() >= 36, "final Copper list owns chip instructions")
+    first.update_color_at(1, $ABC)
+    first.update_color_at(9999, 0)
+    var second_builder = CopperListBuilder::new()
+    expect(second_builder.wait(0, 0).is_ok() && second_builder.move_color(0, 0).is_ok(), "replacement list builds")
+    var second = second_builder.build().unwrap()
+    first.activate()
+    first.switch_to(&var second)
+    first.deactivate_without_restore()
+    second.deactivate()
+    expect(CopperError::InvalidPlaneIndex.message() != null, "Copper errors have messages")
+}
+
+// @covers amiga::sys::graphics::os_sprite::OsSpriteHandle::alloc(*ViewPort, i16)
+// @covers amiga::sys::graphics::os_sprite::OsSpriteHandle::hide()
+// @covers amiga::sys::graphics::os_sprite::OsSpriteHandle::is_allocated()
+// @covers amiga::sys::graphics::os_sprite::OsSpriteHandle::move_to(i16, i16)
+// @covers amiga::sys::graphics::os_sprite::OsSpriteHandle::position()
+// @covers amiga::sys::graphics::os_sprite::OsSpriteHandle::release()
+// @covers amiga::sys::graphics::os_sprite::OsSpriteHandle::set_image(&SpriteData)
+// @covers amiga::sys::graphics::os_sprite::OsSpriteHandle::show(&SpriteData, i16, i16)
+// @covers amiga::sys::graphics::os_sprite::OsSpriteHandle::sprite_num()
+@test("OS-managed sprites show, move, change, hide, and release")
+pub fn os_sprite_contracts() {
+    let screen = ScreenHandle::custom("Tier12 OS Sprite", 320, 200, 2).unwrap()
+    var words: [u16] = [0, 0, $FFFF, 0, 0, 0]
+    let image = SpriteData::from_raw(&var words[0], 6).unwrap()
+    var sprite = OsSpriteHandle::alloc(screen.viewport(), -1).unwrap()
+    expect(sprite.is_allocated() && sprite.sprite_num() >= 0, "OS allocates a sprite channel")
+    expect(sprite.show(&image, 20, 20).is_ok(), "OS sprite shows")
+    expect(sprite.move_to(30, 25).is_ok(), "OS sprite moves")
+    let (x, y) = sprite.position()
+    expect(x == 30 && y == 25, "OS sprite reports position")
+    expect(sprite.set_image(&image).is_ok(), "OS sprite image changes")
+    expect(sprite.hide().is_ok(), "OS sprite hides")
+    sprite.release()
+    expect(!sprite.is_allocated() && sprite.move_to(0, 0).is_err(), "released OS sprite rejects use")
+}

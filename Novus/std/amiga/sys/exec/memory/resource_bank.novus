@@ -176,22 +176,8 @@ impl ResourceBank {
 
     /// Create an empty bank with a name
     fn new(name: Str) -> ResourceBank {
-        var bank = ResourceBank {
-            name: [0; 32],
-            name_len: 0,
-            entries: [BankEntry {
-                asset_id: 0,
-                source_ptr: null,
-                size: 0,
-                priority: Priority::Normal,
-                debug_name: [0; 32],
-                debug_name_len: 0,
-            }; 64],
-            entry_count: 0,
-            state: BankState::Unloaded,
-            total_size: 0,
-            persistent: false,
-        }
+        var bank: ResourceBank = unsafe { @zeroed(ResourceBank) }
+        bank.state = BankState::Unloaded
 
         // Copy name
         var max_len: u32 = 32

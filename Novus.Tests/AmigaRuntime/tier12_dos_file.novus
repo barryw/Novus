@@ -1,0 +1,126 @@
+from std::test::test import expect
+from amiga::raw::consts import ACCESS_READ, DOS_FIB, MODE_NEWFILE, MODE_OLDFILE
+from amiga::raw::consts import OFFSET_BEGINNING, OFFSET_CURRENT, OFFSET_END, SYS_Output
+from amiga::raw::dos import FreeDosObject, UnLoadSeg
+from amiga::raw::structs import TagItem
+from amiga::sys::dos import AllocDos, DirLockHandle, OwnedFileHandle
+from amiga::sys::dos import close_file, create_dir, delete_file, execute_command, file_exists, file_info
+from amiga::sys::dos import load_segment, open_file, read_file, seek_file, write_file
+
+// @covers amiga::sys::dos::file::OwnedFileHandle::open(Str, i32)
+// @covers amiga::sys::dos::file::OwnedFileHandle::open_existing(Str)
+// @covers amiga::sys::dos::file::OwnedFileHandle::read(*u8, u32)
+// @covers amiga::sys::dos::file::OwnedFileHandle::read_all(*u8, u32)
+// @covers amiga::sys::dos::file::OwnedFileHandle::read_line(*u8, u32)
+// @covers amiga::sys::dos::file::OwnedFileHandle::seek(i32, i32)
+// @covers amiga::sys::dos::file::OwnedFileHandle::seek_from_current(i32)
+// @covers amiga::sys::dos::file::OwnedFileHandle::seek_from_end(i32)
+// @covers amiga::sys::dos::file::OwnedFileHandle::seek_from_start(i32)
+// @covers amiga::sys::dos::file::OwnedFileHandle::write_all(*u8, u32)
+// @covers amiga::sys::dos::file::close_file(i32)
+// @covers amiga::sys::dos::file::file_exists(Str)
+// @covers amiga::sys::dos::file::file_info(Str)
+// @covers amiga::sys::dos::file::read_file(i32, *u8, u32)
+// @covers amiga::sys::dos::file::seek_file(i32, i32, i32)
+// @covers amiga::sys::dos::file::write_file(i32, *u8, u32)
+@test("DOS file wrappers preserve data, position, and ownership")
+pub fn dos_file_io_contracts() {
+    let _ = delete_file("RAM:novus_tier12_file.txt")
+    var contents: [u8] = [97, 108, 112, 104, 97, 10, 98, 101, 116, 97, 10]
+    let raw = match open_file("RAM:novus_tier12_file.txt", (i32)MODE_NEWFILE) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "raw output opens")
+            return
+        },
+    }
+    expect(write_file(raw, (*u8)&var contents, 11).unwrap_or(0) == 11, "raw write completes")
+    expect(seek_file(raw, 0, (i32)OFFSET_CURRENT).is_ok(), "raw seek reports position")
+    close_file(raw)
+    expect(file_exists("RAM:novus_tier12_file.txt"), "written file exists")
+    match file_info("RAM:novus_tier12_file.txt") {
+        Result::Ok(info) => expect(info.is_file && !info.is_directory && info.size == 11, "file metadata is exact"),
+        Result::Err(_) => expect(false, "file metadata loads"),
+    }
+
+    var file = match OwnedFileHandle::open_existing("RAM:novus_tier12_file.txt") {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "owned input opens")
+            return
+        },
+    }
+    var line: [u8] = [0; 16]
+    expect(file.read_line((*u8)&var line, 16).unwrap_or(0) == 6 && line[0] == 97 && line[5] == 10, "line read includes newline")
+    expect(file.seek_from_start(0).is_ok(), "seek from start succeeds")
+    var bytes: [u8] = [0; 16]
+    expect(file.read((*u8)&var bytes, 5).unwrap_or(0) == 5 && bytes[4] == 97, "bounded read succeeds")
+    expect(file.seek_from_current(1).is_ok(), "seek from current succeeds")
+    expect(file.seek_from_end(-5).is_ok(), "seek from end succeeds")
+    expect(file.seek(0, (i32)OFFSET_BEGINNING).is_ok(), "generic seek succeeds")
+    expect(file.read_all((*u8)&var bytes, 16).unwrap_or(0) == 11 && bytes[10] == 10, "read_all reaches EOF")
+
+    let raw_input = file.into_raw()
+    match OwnedFileHandle::from_raw(raw_input) {
+        Result::Ok(owner) => expect(owner.as_raw() == raw_input, "raw handle ownership round-trips"),
+        Result::Err(_) => expect(false, "raw handle is accepted"),
+    }
+    expect(OwnedFileHandle::from_raw(0).is_err(), "null file handle is rejected")
+    let _ = delete_file("RAM:novus_tier12_file.txt")
+}
+
+// @covers amiga::sys::dos::file::AllocDos(u32, *TagItem, u32)
+// @covers amiga::sys::dos::file::DirLockHandle::as_raw()
+// @covers amiga::sys::dos::file::DirLockHandle::from_raw(i32)
+// @covers amiga::sys::dos::file::DirLockHandle::into_raw()
+// @covers amiga::sys::dos::file::DirLockHandle::lock(Str, i32)
+// @covers amiga::sys::dos::file::create_dir(Str)
+// @covers amiga::sys::dos::file::execute_command(Str, *TagItem, u32)
+// @covers amiga::sys::dos::file::load_segment(Str, *TagItem, u32)
+@test("DOS object, lock, command, and segment wrappers own resources")
+pub fn dos_resource_contracts() {
+    match AllocDos(DOS_FIB, null, 0) {
+        Result::Ok(object) => {
+            expect(object != null, "DOS object allocates")
+            FreeDosObject(DOS_FIB, object)
+        },
+        Result::Err(_) => expect(false, "DOS object allocates"),
+    }
+    match DirLockHandle::lock("RAM:", ACCESS_READ) {
+        Result::Ok(lock) => {
+            let raw = lock.into_raw()
+            match DirLockHandle::from_raw(raw) {
+                Result::Ok(owner) => expect(owner.as_raw() == raw, "directory lock ownership round-trips"),
+                Result::Err(_) => expect(false, "raw lock is accepted"),
+            }
+        },
+        Result::Err(_) => expect(false, "RAM directory locks"),
+    }
+    expect(DirLockHandle::from_raw(0).is_err(), "null lock is rejected")
+
+    let _ = delete_file("RAM:novus_tier12_dir")
+    expect(create_dir("RAM:novus_tier12_dir").is_ok() && file_exists("RAM:novus_tier12_dir"), "directory is created")
+    let _ = delete_file("RAM:novus_tier12_dir")
+
+    match load_segment("C:List", null, 0) {
+        Result::Ok(segment) => {
+            expect(segment != 0, "program segment loads")
+            UnLoadSeg(segment)
+        },
+        Result::Err(_) => expect(false, "program segment loads"),
+    }
+
+    let _ = delete_file("RAM:novus_tier12_command.txt")
+    let output = open_file("RAM:novus_tier12_command.txt", (i32)MODE_NEWFILE).unwrap_or(0)
+    var tags: [TagItem] = [TagItem { ti_Tag: SYS_Output, ti_Data: (u32)output }]
+    var status: i32 = -1
+    if output != 0 { status = execute_command("C:List SYS:C/List LFORMAT %N", &var tags[0], 1).unwrap_or(-1) }
+    expect(status == 0, "tagged command succeeds")
+    if output != 0 { close_file(output) }
+    let command_input = open_file("RAM:novus_tier12_command.txt", (i32)MODE_OLDFILE).unwrap_or(0)
+    var command_bytes: [u8] = [0; 8]
+    let command_count = if command_input != 0 { read_file(command_input, (*u8)&var command_bytes, 8).unwrap_or(0) } else { 0 }
+    if command_input != 0 { close_file(command_input) }
+    expect(command_count == 5 && command_bytes[0] == 76, "command output is exact")
+    let _ = delete_file("RAM:novus_tier12_command.txt")
+}

@@ -1,0 +1,209 @@
+from std::test::test import expect
+from amiga::raw::graphics import CloseFont, InitRastPort, WaitBlit
+from amiga::raw::structs import RastPort
+from amiga::sys::graphics::area import AreaContext, fill_circle, fill_ellipse, fill_quad, fill_triangle, ras_size, vector_buffer_size
+from amiga::sys::graphics::draw import DrawContext, DrawMode, draw_circle, draw_ellipse, draw_line, fill_rect
+from amiga::sys::graphics::font import FontHandle, FontMetrics, open_default_font, open_font, open_font_bold, open_font_italic
+from amiga::sys::graphics::shapes import Ellipse, Point
+from amiga::sys::intuition import WindowHandle
+
+// @covers amiga::sys::graphics::draw::DrawContext::box_fill(i16, i16, i16, i16)
+// @covers amiga::sys::graphics::draw::DrawContext::box_outline(i16, i16, i16, i16)
+// @covers amiga::sys::graphics::draw::DrawContext::circle_at(&Point, i16)
+// @covers amiga::sys::graphics::draw::DrawContext::clear_to_background()
+// @covers amiga::sys::graphics::draw::DrawContext::cross(i16, i16, i16)
+// @covers amiga::sys::graphics::draw::DrawContext::cursor()
+// @covers amiga::sys::graphics::draw::DrawContext::ellipse(i16, i16, i16, i16)
+// @covers amiga::sys::graphics::draw::DrawContext::erase_rect(i16, i16, i16, i16)
+// @covers amiga::sys::graphics::draw::DrawContext::hline(i16, i16, i16)
+// @covers amiga::sys::graphics::draw::DrawContext::line_points(&Point, &Point)
+// @covers amiga::sys::graphics::draw::DrawContext::line_to_point(&Point)
+// @covers amiga::sys::graphics::draw::DrawContext::move_to_point(&Point)
+// @covers amiga::sys::graphics::draw::DrawContext::outline_rect(i16, i16, i16, i16)
+// @covers amiga::sys::graphics::draw::DrawContext::polygon(*i16, i16)
+// @covers amiga::sys::graphics::draw::DrawContext::polyline(*i16, i16)
+// @covers amiga::sys::graphics::draw::DrawContext::polyline_points(*Point, i16)
+// @covers amiga::sys::graphics::draw::DrawContext::vline(i16, i16, i16)
+// @covers amiga::sys::graphics::draw::DrawContext::x_mark(i16, i16, i16)
+// @covers amiga::sys::graphics::draw::DrawMode::from_raw(u8)
+// @covers amiga::sys::graphics::draw::draw_circle(*RastPort, i16, i16, i16)
+// @covers amiga::sys::graphics::draw::draw_ellipse(*RastPort, i16, i16, i16, i16)
+// @covers amiga::sys::graphics::draw::draw_line(*RastPort, i16, i16, i16, i16)
+// @covers amiga::sys::graphics::draw::fill_rect(*RastPort, i16, i16, i16, i16)
+@test("drawing contexts render every primitive on a live window bitmap")
+pub fn draw_context_contracts() {
+    let window = match WindowHandle::simple("Tier12 Draw", 240, 160) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "drawing window opens")
+            return
+        },
+    }
+    let ctx = DrawContext::from_rastport(window.rastport()).unwrap()
+    ctx.bg_pen(0)
+    ctx.clear_to_background()
+    ctx.pen(1)
+    ctx.box_fill(10, 20, 20, 10)
+    ctx.box_outline(35, 20, 20, 10)
+    ctx.outline_rect(60, 20, 80, 30)
+    ctx.erase_rect(12, 22, 14, 24)
+    let p1 = Point::new(10, 40)
+    let p2 = Point::new(40, 40)
+    ctx.line_points(&p1, &p2)
+    ctx.move_to_point(&Point::new(10, 45))
+    ctx.line_to_point(&Point::new(40, 45))
+    expect(ctx.cursor().x == 40 && ctx.cursor().y == 45, "point cursor operations retain position")
+    ctx.hline(10, 40, 50)
+    ctx.vline(45, 35, 55)
+    ctx.circle_at(&Point::new(70, 50), 8)
+    ctx.ellipse(100, 50, 12, 6)
+    ctx.cross(130, 50, 10)
+    ctx.x_mark(150, 50, 10)
+    var pairs: [i16] = [10, 70, 30, 70, 30, 85]
+    ctx.polyline((*i16)&var pairs, 3)
+    ctx.polygon((*i16)&var pairs, 3)
+    var points: [Point] = [Point::new(50, 70), Point::new(70, 70), Point::new(70, 85)]
+    ctx.polyline_points(&var points[0], 3)
+    draw_line(ctx.as_raw(), 90, 70, 110, 85)
+    fill_rect(ctx.as_raw(), 115, 70, 125, 80)
+    draw_ellipse(ctx.as_raw(), 145, 77, 10, 6)
+    draw_circle(ctx.as_raw(), 175, 77, 7)
+    expect(matches!(DrawMode::from_raw(2), DrawMode::Complement), "raw draw mode maps complement")
+    expect(matches!(DrawMode::from_raw(7), DrawMode::Jam1), "unknown draw mode maps safely")
+    WaitBlit()
+    expect(ctx.get_pixel(20, 25) == 1 && ctx.get_pixel(120, 75) == 1, "filled primitives change bitmap pixels")
+}
+
+// @covers amiga::sys::graphics::area::AreaContext::as_raw()
+// @covers amiga::sys::graphics::area::AreaContext::begin(i16, i16)
+// @covers amiga::sys::graphics::area::AreaContext::begin_at(&Point)
+// @covers amiga::sys::graphics::area::AreaContext::circle_fill(i16, i16, i16)
+// @covers amiga::sys::graphics::area::AreaContext::circle_fill_at(&Point, i16)
+// @covers amiga::sys::graphics::area::AreaContext::detach()
+// @covers amiga::sys::graphics::area::AreaContext::ellipse_fill(i16, i16, i16, i16)
+// @covers amiga::sys::graphics::area::AreaContext::ellipse_shape_fill(&Ellipse)
+// @covers amiga::sys::graphics::area::AreaContext::end_fill()
+// @covers amiga::sys::graphics::area::AreaContext::from_bitmap(&RastPort, i16)
+// @covers amiga::sys::graphics::area::AreaContext::from_window(&Window, i16)
+// @covers amiga::sys::graphics::area::AreaContext::is_attached()
+// @covers amiga::sys::graphics::area::AreaContext::max_vertices()
+// @covers amiga::sys::graphics::area::AreaContext::new(&RastPort, i16)
+// @covers amiga::sys::graphics::area::AreaContext::vertex(i16, i16)
+// @covers amiga::sys::graphics::area::AreaContext::vertex_at(&Point)
+// @covers amiga::sys::graphics::area::AreaContext::with_ras_size(&RastPort, i16, u32)
+// @covers amiga::sys::graphics::area::fill_circle(&RastPort, i16, i16, i16)
+// @covers amiga::sys::graphics::area::fill_ellipse(&RastPort, i16, i16, i16, i16)
+// @covers amiga::sys::graphics::area::fill_quad(&RastPort, i16, i16, i16, i16, i16, i16, i16, i16)
+// @covers amiga::sys::graphics::area::fill_triangle(&RastPort, i16, i16, i16, i16, i16, i16)
+// @covers amiga::sys::graphics::area::ras_size(u16, u16)
+// @covers amiga::sys::graphics::area::vector_buffer_size(i16)
+@test("area contexts attach resources and render filled shapes")
+pub fn area_context_contracts() {
+    expect(ras_size(17, 2) == 8 && vector_buffer_size(5) == 25, "area buffer calculations are exact")
+    let window = match WindowHandle::simple("Tier12 Area", 240, 160) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "area window opens")
+            return
+        },
+    }
+    let rp = window.rastport()
+    let ctx = DrawContext::from_rastport(rp).unwrap()
+    ctx.clear(0)
+    ctx.pen(1)
+    {
+        var area = AreaContext::new(rp, 8).unwrap()
+        expect(area.is_attached() && area.max_vertices() == 8 && area.as_raw() == ctx.as_raw(), "area attaches to requested RastPort")
+        expect(area.begin(10, 30).is_ok() && area.vertex(30, 30).is_ok() && area.vertex(20, 50).is_ok() && area.end_fill().is_ok(), "coordinate polygon fills")
+        let a = Point::new(40, 30)
+        let b = Point::new(60, 30)
+        let c = Point::new(50, 50)
+        expect(area.begin_at(&a).is_ok() && area.vertex_at(&b).is_ok() && area.vertex_at(&c).is_ok() && area.end_fill().is_ok(), "point polygon fills")
+        expect(area.ellipse_fill(80, 40, 8, 5).is_ok(), "ellipse fills")
+        expect(area.circle_fill(105, 40, 6).is_ok(), "circle fills")
+        expect(area.circle_fill_at(&Point::new(125, 40), 6).is_ok(), "point circle fills")
+        expect(area.ellipse_shape_fill(&Ellipse::new(150, 40, 8, 5)).is_ok(), "shape ellipse fills")
+        area.detach()
+        expect(!area.is_attached() && area.begin(0, 0).is_err(), "detached context rejects drawing")
+    }
+    {
+        var area = AreaContext::from_bitmap(rp, 4).unwrap()
+        expect(area.circle_fill(175, 40, 5).is_ok(), "bitmap-sized area works")
+    }
+    {
+        let raw_window = window.as_raw()
+        var area = unsafe { AreaContext::from_window(&*raw_window, 4).unwrap() }
+        expect(area.circle_fill(195, 40, 5).is_ok(), "window-sized area works")
+    }
+    {
+        var area = AreaContext::with_ras_size(rp, 4, ras_size(240, 160)).unwrap()
+        expect(area.circle_fill(215, 40, 5).is_ok(), "custom-raster area works")
+    }
+    expect(fill_triangle(rp, 10, 70, 30, 70, 20, 90).is_ok(), "triangle helper fills")
+    expect(fill_quad(rp, 40, 70, 60, 70, 60, 90, 40, 90).is_ok(), "quad helper fills")
+    expect(fill_ellipse(rp, 85, 80, 9, 6).is_ok(), "ellipse helper fills")
+    expect(fill_circle(rp, 110, 80, 6).is_ok(), "circle helper fills")
+    WaitBlit()
+    expect(ctx.get_pixel(20, 40) == 1 && ctx.get_pixel(110, 80) == 1, "area fills reach the bitmap")
+}
+
+// @covers amiga::sys::graphics::font::FontHandle::apply_to(*RastPort)
+// @covers amiga::sys::graphics::font::FontHandle::as_raw()
+// @covers amiga::sys::graphics::font::FontHandle::baseline()
+// @covers amiga::sys::graphics::font::FontHandle::bold_smear()
+// @covers amiga::sys::graphics::font::FontHandle::flags()
+// @covers amiga::sys::graphics::font::FontHandle::from_raw(*TextFont)
+// @covers amiga::sys::graphics::font::FontHandle::height()
+// @covers amiga::sys::graphics::font::FontHandle::high_char()
+// @covers amiga::sys::graphics::font::FontHandle::into_raw()
+// @covers amiga::sys::graphics::font::FontHandle::is_proportional()
+// @covers amiga::sys::graphics::font::FontHandle::low_char()
+// @covers amiga::sys::graphics::font::FontHandle::open(*u8, u16)
+// @covers amiga::sys::graphics::font::FontHandle::open_disk(*u8, u16)
+// @covers amiga::sys::graphics::font::FontHandle::open_rom(*u8, u16)
+// @covers amiga::sys::graphics::font::FontHandle::open_styled(*u8, u16, u8, u8)
+// @covers amiga::sys::graphics::font::FontHandle::style()
+// @covers amiga::sys::graphics::font::FontHandle::width()
+// @covers amiga::sys::graphics::font::FontMetrics::char_range()
+// @covers amiga::sys::graphics::font::FontMetrics::from_font(&FontHandle)
+// @covers amiga::sys::graphics::font::FontMetrics::is_proportional()
+// @covers amiga::sys::graphics::font::open_default_font()
+// @covers amiga::sys::graphics::font::open_font(*u8, u16)
+// @covers amiga::sys::graphics::font::open_font_bold(*u8, u16)
+// @covers amiga::sys::graphics::font::open_font_italic(*u8, u16)
+@test("font handles open, measure, apply, and transfer ownership")
+pub fn font_handle_contracts() {
+    var rp: RastPort = @zeroed(RastPort)
+    InitRastPort(&var rp)
+    {
+        let font = FontHandle::open_rom("topaz.font", 8).unwrap()
+        expect(font.as_raw() != null && font.height() == 8 && font.width() > 0, "ROM font opens with dimensions")
+        expect(font.baseline() < font.height() && font.high_char() >= font.low_char(), "ROM font range and baseline are valid")
+        let _ = font.bold_smear()
+        let _ = font.style()
+        let _ = font.flags()
+        let _ = font.is_proportional()
+        let old_font = font.apply_to(&var rp)
+        expect(rp.Font == font.as_raw(), "font applies to RastPort")
+        let metrics = FontMetrics::from_font(&font)
+        let (low, high) = metrics.char_range()
+        expect(high >= low && metrics.is_proportional() == font.is_proportional(), "metrics reproduce font properties")
+        rp.Font = old_font
+    }
+    expect(FontHandle::open("topaz.font", 8).is_ok(), "general font opener succeeds")
+    expect(FontHandle::open_disk("topaz.font", 8).is_ok(), "disk font opener succeeds")
+    expect(FontHandle::open_styled("topaz.font", 8, 1, 0).is_ok(), "styled font opener succeeds")
+    expect(open_default_font().is_ok(), "default font helper succeeds")
+    expect(open_font("topaz.font", 8).is_ok(), "font helper succeeds")
+    expect(open_font_bold("topaz.font", 8).is_ok(), "bold font helper succeeds")
+    expect(open_font_italic("topaz.font", 8).is_ok(), "italic font helper succeeds")
+    let raw = FontHandle::open_rom("topaz.font", 8).unwrap().into_raw()
+    match FontHandle::from_raw(raw) {
+        Result::Ok(owner) => expect(owner.as_raw() == raw, "font ownership round-trips"),
+        Result::Err(_) => {
+            if raw != null { CloseFont(raw) }
+            expect(false, "owned raw font is accepted")
+        },
+    }
+    expect(FontHandle::from_raw(null).is_err(), "null font is rejected")
+}

@@ -1,0 +1,72 @@
+from std::core import Option
+from std::test::test import expect
+from amiga::storage import BlockDevice, BlockDeviceError, StorageError, device_use, devices
+from amiga::storage import driver_is_loaded, load_driver, mounted_volume_for, volume_name_exists
+
+// @covers amiga::storage::devices()
+// @covers amiga::storage::StorageDevice::driver()
+// @covers amiga::storage::StorageDevice::name()
+// @covers amiga::storage::StorageDevice::unit()
+// @covers amiga::storage::StorageDevice::flags()
+@test("application storage returns owned device snapshots")
+pub fn storage_device_snapshots() {
+    match devices() {
+        Result::Ok(found) => {
+            expect(found.len() <= 32, "device result is bounded")
+            for device in &found {
+                let _ = device.name()
+                let _ = device.unit()
+                let _ = device.flags()
+                expect(device.driver().ends_with(".device"), "driver name is valid")
+            }
+        },
+        Result::Err(_) => expect(false, "device discovery should succeed"),
+    }
+}
+
+// @covers amiga::storage::driver_is_loaded(Str)
+// @covers amiga::storage::load_driver(Str)
+// @covers amiga::storage::device_use(Str, u32)
+// @covers amiga::storage::mounted_volume_for(Str, u32, u32, u32)
+// @covers amiga::storage::volume_name_exists(Str)
+@test("application storage queries keep system ownership internal")
+pub fn storage_queries() {
+    expect(driver_is_loaded("trackdisk.device"), "resident trackdisk driver is found")
+    expect(load_driver("RAM:not-a-real.device").is_err(), "missing driver is rejected")
+    let classified_or_safe = match device_use("trackdisk.device", 0) {
+        Result::Ok(_) => true,
+        Result::Err(StorageError::DiscoveryFailed) => true,
+        Result::Err(_) => false,
+    }
+    expect(classified_or_safe, "live device is classified or fails closed")
+    match mounted_volume_for("not-a-real.device", 99, 0, 1) {
+        Result::Ok(value) => expect(value.is_none(), "unknown device has no mounted volume"),
+        Result::Err(_) => expect(false, "mounted volume query should complete"),
+    }
+    expect(volume_name_exists("RAM").unwrap_or(false), "RAM volume is visible")
+    expect(!volume_name_exists("NOVUS_NOT_MOUNTED").unwrap_or(true), "unknown volume is absent")
+}
+
+// @covers amiga::storage::block_device::BlockGeometry::cylinders()
+// @covers amiga::storage::block_device::BlockGeometry::heads()
+// @covers amiga::storage::block_device::BlockGeometry::blocks_per_track()
+@test("application block geometry exposes physical dimensions")
+pub fn storage_geometry_dimensions() {
+    match BlockDevice::open("trackdisk.device", 0) {
+        Result::Ok(device) => {
+            let geometry = device.geometry()
+            expect(geometry.cylinders() > 0, "cylinders are reported")
+            expect(geometry.heads() > 0, "heads are reported")
+            expect(geometry.blocks_per_track() > 0, "blocks per track are reported")
+        },
+        Result::Err(_) => expect(false, "trackdisk.device should open"),
+    }
+}
+
+// @covers amiga::storage::StorageError::message()
+// @covers amiga::storage::block_device::BlockDeviceError::message()
+@test("application storage errors expose messages")
+pub fn storage_error_messages() {
+    expect((u32)StorageError::DiscoveryFailed.message() != 0, "storage message is non-null")
+    expect((u32)BlockDeviceError::OutOfRange.message() != 0, "block message is non-null")
+}

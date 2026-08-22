@@ -1,0 +1,175 @@
+from std::core import Option, Result
+from std::test::test import expect
+from amiga::raw::structs import Message, MsgPort, Task
+from amiga::sys::exec import LibraryHandle, MsgPortHandle, ScopedData, SemaphoreHandle, SignalHandle
+from amiga::sys::exec import allocate_signal, disable, enable, find_task, forbid, free_signal
+from amiga::sys::exec import get_current_task, permit, send_signal, set_task_priority, wait_for_signals
+
+fn message_for(reply_port: *MsgPort) -> Message {
+    var message: Message = @zeroed(Message)
+    message.mn_Node.ln_Type = 5
+    message.mn_ReplyPort = reply_port
+    return message
+}
+
+// @covers amiga::sys::exec::exec::get_current_task()
+// @covers amiga::sys::exec::exec::find_task(Str)
+// @covers amiga::sys::exec::exec::set_task_priority(*Task, i32)
+// @covers amiga::sys::exec::exec::forbid()
+// @covers amiga::sys::exec::exec::permit()
+// @covers amiga::sys::exec::exec::disable()
+// @covers amiga::sys::exec::exec::enable()
+@test("Exec task and critical-section helpers preserve state")
+pub fn task_contracts() {
+    let task = match get_current_task() {
+        Option::Some(value) => value,
+        Option::None => {
+            expect(false, "current task exists")
+            return
+        },
+    }
+    expect(find_task("novus-tier12-no-such-task").is_none(), "missing task stays absent")
+    let old_priority = set_task_priority(task, 0)
+    let _ = set_task_priority(task, (i32)old_priority)
+    forbid()
+    permit()
+    disable()
+    enable()
+    expect(get_current_task().unwrap() == task, "paired critical sections preserve the current task")
+}
+
+// @covers amiga::sys::exec::exec::allocate_signal(i32)
+// @covers amiga::sys::exec::exec::free_signal(i32)
+// @covers amiga::sys::exec::exec::wait_for_signals(u32)
+// @covers amiga::sys::exec::exec::send_signal(*Task, u32)
+// @covers amiga::sys::exec::exec::SignalHandle::mask()
+// @covers amiga::sys::exec::exec::SignalHandle::send_to(*Task)
+// @covers amiga::sys::exec::exec::SignalHandle::wait()
+@test("Exec signal helpers deliver owned signals")
+pub fn signal_contracts() {
+    let task = get_current_task().unwrap()
+    match allocate_signal(-1) {
+        Result::Ok(bit) => {
+            let mask: u32 = 1 << (u32)bit
+            send_signal(task, mask)
+            expect((wait_for_signals(mask) & mask) != 0, "raw signal is delivered")
+            free_signal(bit)
+        },
+        Result::Err(_) => expect(false, "raw signal allocates"),
+    }
+    match SignalHandle::alloc() {
+        Result::Ok(signal) => {
+            let mask = signal.mask()
+            signal.send_to(task)
+            expect((signal.wait() & mask) != 0, "owned signal is delivered")
+        },
+        Result::Err(_) => expect(false, "owned signal allocates"),
+    }
+}
+
+// @covers amiga::sys::exec::exec::MsgPortHandle::drain_messages()
+// @covers amiga::sys::exec::exec::MsgPortHandle::get_msg()
+// @covers amiga::sys::exec::exec::MsgPortHandle::put_msg(*Message)
+// @covers amiga::sys::exec::exec::MsgPortHandle::reply_msg(*Message)
+// @covers amiga::sys::exec::exec::MsgPortHandle::signal_bit()
+// @covers amiga::sys::exec::exec::MsgPortHandle::signal_mask()
+// @covers amiga::sys::exec::exec::MsgPortHandle::wait()
+@test("Exec message-port helpers round-trip and drain messages")
+pub fn port_contracts() {
+    let destination = MsgPortHandle::create().unwrap()
+    let reply = MsgPortHandle::create().unwrap()
+    expect(destination.signal_bit() < 32 && destination.signal_mask() != 0, "port owns a valid signal")
+    var message = message_for(reply.as_raw())
+    let expected: *Message = (*Message)&var message
+    destination.put_msg(expected)
+    expect((destination.wait() & destination.signal_mask()) != 0, "put signals destination")
+    match destination.get_msg() {
+        Option::Some(actual) => destination.reply_msg(actual),
+        Option::None => expect(false, "destination receives message"),
+    }
+    expect((reply.wait() & reply.signal_mask()) != 0, "reply signals reply port")
+    expect(reply.get_msg().unwrap() == expected, "reply returns the same message")
+    destination.drain_messages()
+    expect(destination.get_msg().is_none(), "drained port is empty")
+}
+
+// @covers amiga::sys::exec::exec::SemaphoreHandle::as_raw()
+// @covers amiga::sys::exec::exec::SemaphoreHandle::find(*u8)
+// @covers amiga::sys::exec::exec::SemaphoreHandle::lock()
+// @covers amiga::sys::exec::exec::SemaphoreHandle::lock_shared()
+// @covers amiga::sys::exec::exec::SemaphoreHandle::new()
+// @covers amiga::sys::exec::exec::SemaphoreHandle::new_public(*u8, i8)
+// @covers amiga::sys::exec::exec::SemaphoreHandle::try_lock()
+// @covers amiga::sys::exec::exec::SemaphoreHandle::try_lock_shared()
+@test("Exec semaphore handles support private and public locking")
+pub fn semaphore_contracts() {
+    let semaphore = SemaphoreHandle::new().unwrap()
+    expect((u32)semaphore.as_raw() != 0, "private semaphore has storage")
+    {
+        let _guard = semaphore.lock()
+    }
+    {
+        expect(semaphore.try_lock().is_some(), "unheld semaphore accepts exclusive try-lock")
+    }
+    {
+        let _guard = semaphore.lock_shared()
+    }
+    {
+        expect(semaphore.try_lock_shared().is_some(), "unheld semaphore accepts shared try-lock")
+    }
+
+    let name = "novus-tier12-public-semaphore"
+    let public = SemaphoreHandle::new_public(name.as_cstr(), 0).unwrap()
+    expect(SemaphoreHandle::find(name.as_cstr()).is_some(), "public semaphore is discoverable")
+}
+
+// @covers amiga::sys::exec::exec::ScopedData::lock()
+// @covers amiga::sys::exec::exec::ScopedData::lock_shared()
+// @covers amiga::sys::exec::exec::ScopedData::new(T)
+// @covers amiga::sys::exec::exec::ScopedData::try_lock()
+// @covers amiga::sys::exec::exec::ScopedData::try_lock_shared()
+// @covers amiga::sys::exec::exec::ScopedDataGuard::get()
+// @covers amiga::sys::exec::exec::ScopedDataGuard::set(T)
+// @covers amiga::sys::exec::exec::SharedScopedDataGuard::get()
+@test("Exec scoped data guards retain protected values")
+pub fn scoped_data_contracts() {
+    var data = ScopedData::<u32>::new(7).unwrap()
+    {
+        var guard = data.lock()
+        expect(*guard.get() == 7, "exclusive guard reads")
+        guard.set(9)
+    }
+    {
+        let guard = data.lock_shared()
+        expect(*guard.get() == 9, "shared guard observes update")
+    }
+    {
+        expect(data.try_lock().is_some(), "unheld scoped data accepts exclusive try-lock")
+    }
+    {
+        expect(data.try_lock_shared().is_some(), "unheld scoped data accepts shared try-lock")
+    }
+}
+
+// @covers amiga::sys::exec::exec::LibraryHandle::as_raw()
+// @covers amiga::sys::exec::exec::LibraryHandle::from_raw(*Library, u32)
+// @covers amiga::sys::exec::exec::LibraryHandle::installed_revision()
+// @covers amiga::sys::exec::exec::LibraryHandle::installed_version()
+// @covers amiga::sys::exec::exec::LibraryHandle::into_raw()
+// @covers amiga::sys::exec::exec::LibraryHandle::open(Str, u32)
+// @covers amiga::sys::exec::exec::LibraryHandle::open_any(Str)
+// @covers amiga::sys::exec::exec::LibraryHandle::version()
+@test("Exec library handles preserve ownership and version metadata")
+pub fn library_contracts() {
+    match LibraryHandle::open("dos.library", 37) {
+        Result::Ok(handle) => {
+            expect((u32)handle.as_raw() != 0, "library has a base")
+            expect(handle.version() == 37 && handle.installed_version() >= 37, "version metadata is retained")
+            let _ = handle.installed_revision()
+            let raw = handle.into_raw()
+            expect(LibraryHandle::from_raw(raw, 37).is_ok(), "raw ownership round-trips")
+        },
+        Result::Err(_) => expect(false, "dos.library opens"),
+    }
+    expect(LibraryHandle::open_any("graphics.library").is_ok(), "library opens without a minimum")
+}

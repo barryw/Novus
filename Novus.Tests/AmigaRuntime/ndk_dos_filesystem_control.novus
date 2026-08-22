@@ -2,6 +2,9 @@ from std::string import Str
 from std::test::test import expect
 from amiga::raw::consts import ERROR_OBJECT_IN_USE, ID_INTER_FFS_DISK
 from amiga::raw::dos import AddBuffers, Close, Delay, DeleteFile, Format, Inhibit, IoErr, Lock, Open, Read, Relabel, UnLock, Write
+from amiga::raw::exec import FindTask
+from amiga::raw::structs import Process
+from amiga::sys::dos::filesystem import MountedFileSystem
 
 // A handler that has just serviced a write still has work outstanding, and
 // ACTION_INHIBIT is refused with ERROR_OBJECT_IN_USE until it settles. That is
@@ -17,6 +20,16 @@ fn inhibit_when_idle(name: Str, flag: i32) -> i32 {
         Delay(10)
         attempt++
     }
+}
+
+fn lock_without_requester(path: Str) -> i32 {
+    let process = (*Process)FindTask(null)
+    if process == null { return Lock(path.as_cstr(), -2) }
+    let original = process.pr_WindowPtr
+    process.pr_WindowPtr = (*u8)-1
+    let lock = Lock(path.as_cstr(), -2)
+    process.pr_WindowPtr = original
+    return lock
 }
 
 fn mounted() -> bool {
@@ -67,6 +80,19 @@ fn buffer_count(result: i32) -> i32 {
     return -1
 }
 
+// @covers amiga::sys::dos::filesystem::InhibitedFileSystem::format(Str, u32)
+// @covers amiga::sys::dos::filesystem::InhibitedFileSystem::release()
+// @covers amiga::sys::dos::filesystem::MountedFileSystem::inhibit()
+@test("owned filesystem inhibition formats and resumes the disposable volume")
+pub fn owned_filesystem_format() {
+    let filesystem = MountedFileSystem::open("NDK0:").unwrap()
+    var inhibited = filesystem.inhibit().unwrap()
+    expect(inhibited.format("NOVUSNDK", ID_INTER_FFS_DISK).is_ok(), "owned inhibited handler accepts ACTION_FORMAT")
+    expect(inhibited.release().is_ok(), "explicit release resumes the handler exactly once")
+    expect(inhibited.release().is_ok(), "repeated release is an idempotent no-op")
+    expect(mounted() && write_and_read_probe(), "wrapper-formatted volume performs exact file I/O")
+}
+
 // @covers-ndk function|dos.library|Format
 // @ndk-side-effects Inhibits only the attached disposable NDK0 partition, creates a DOS3 international FFS volume, resumes the handler, and proves exact create/write/read/delete behavior on the new filesystem
 @test("dos.library Format creates a working disposable filesystem")
@@ -99,7 +125,7 @@ pub fn dos_relabel() {
 pub fn dos_inhibit() {
     let ready = ensure_formatted()
     let inhibited = ready && inhibit_when_idle("NDK0:", 1) != 0
-    let blocked = if inhibited { Lock("NDK0:", -2) } else { 0 }
+    let blocked = if inhibited { lock_without_requester("NDK0:") } else { 0 }
     if blocked != 0 { UnLock(blocked) }
     let resumed = if inhibited { inhibit_when_idle("NDK0:", 0) != 0 } else { false }
     let available = if resumed { Lock("NDK0:", -2) } else { 0 }

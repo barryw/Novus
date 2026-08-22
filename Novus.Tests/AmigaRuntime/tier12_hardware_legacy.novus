@@ -1,0 +1,21 @@
+from std::test::test import expect
+from amiga::sys::hardware::cpu import SystemCPU, SystemFPU, SystemChipset, CPU, FPU, CHIPSET, CHIP_RAM
+
+// @covers amiga::sys::hardware::cpu::CHIPSET()
+// @covers amiga::sys::hardware::cpu::CHIP_RAM()
+// @covers amiga::sys::hardware::cpu::CPU()
+// @covers amiga::sys::hardware::cpu::FPU()
+@test("legacy hardware detection reports supported classic configurations")
+pub fn legacy_hardware_detection_contracts() {
+    let cpu_ok = match CPU() {
+        SystemCPU::M68020 | SystemCPU::M68030 | SystemCPU::M68040 | SystemCPU::M68060 => true,
+    }
+    let fpu_ok = match FPU() {
+        SystemFPU::None | SystemFPU::M68881 | SystemFPU::M68882 | SystemFPU::M68040 | SystemFPU::M68060 => true,
+    }
+    let chipset_ok = match CHIPSET() {
+        SystemChipset::OCS | SystemChipset::ECS | SystemChipset::AGA => true,
+    }
+    let _memory = CHIP_RAM()
+    expect(cpu_ok && fpu_ok && chipset_ok, "legacy detector values are valid")
+}

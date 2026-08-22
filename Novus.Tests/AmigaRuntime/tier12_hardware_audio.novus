@@ -1,0 +1,199 @@
+from std::core import Option
+from std::test::test import expect
+from amiga::sys::hardware::audio import AudioChannel, ChannelMask, MultiChannel
+from amiga::sys::hardware::audio import PlaybackMode, SampleHandle
+from amiga::sys::hardware::audio import init_audio, init_channel, is_pal_system, play_sound, stop_all_channels
+
+fn no_delay() {}
+
+// @covers amiga::sys::hardware::audio::ChannelMask::none()
+// @covers amiga::sys::hardware::audio::ChannelMask::all()
+// @covers amiga::sys::hardware::audio::ChannelMask::channel(u8)
+// @covers amiga::sys::hardware::audio::ChannelMask::left()
+// @covers amiga::sys::hardware::audio::ChannelMask::right()
+// @covers amiga::sys::hardware::audio::ChannelMask::stereo()
+// @covers amiga::sys::hardware::audio::ChannelMask::from_raw(u8)
+// @covers amiga::sys::hardware::audio::ChannelMask::with(u8)
+// @covers amiga::sys::hardware::audio::ChannelMask::without(u8)
+// @covers amiga::sys::hardware::audio::ChannelMask::has(u8)
+// @covers amiga::sys::hardware::audio::ChannelMask::as_raw()
+// @covers amiga::sys::hardware::audio::ChannelMask::count()
+// @covers amiga::sys::hardware::audio::ChannelMask::is_empty()
+// @covers amiga::sys::hardware::audio::ChannelMask::has_left()
+// @covers amiga::sys::hardware::audio::ChannelMask::has_right()
+// @covers amiga::sys::hardware::audio::ChannelMask::is_stereo()
+// @covers amiga::sys::hardware::audio::ChannelMask::first()
+@test("Paula channel masks preserve channel topology")
+pub fn channel_mask_contracts() {
+    expect(ChannelMask::none().is_empty(), "empty mask is empty")
+    expect(ChannelMask::all().count() == 4 && ChannelMask::all().as_raw() == $0F, "all mask has four channels")
+    expect(ChannelMask::channel(2).has(2), "single channel is present")
+    expect(ChannelMask::left().has_left() && !ChannelMask::left().has_right(), "left mask is left-only")
+    expect(ChannelMask::right().has_right() && !ChannelMask::right().has_left(), "right mask is right-only")
+    expect(ChannelMask::stereo().is_stereo(), "stereo has both sides")
+    let built = ChannelMask::from_raw($F1).with(2).without(0)
+    expect(built.as_raw() == 4 && built.first().unwrap_or(9) == 2, "raw masks are bounded and composable")
+    expect(!ChannelMask::channel(9).has(9), "invalid channels are excluded")
+}
+
+// @covers amiga::sys::hardware::audio::SampleHandle::from_chip_ram(*u8, u32, u32)
+// @covers amiga::sys::hardware::audio::SampleHandle::period_ntsc()
+// @covers amiga::sys::hardware::audio::SampleHandle::duration_ms(bool)
+@test("Paula samples can borrow existing chip memory")
+pub fn borrowed_sample_contracts() {
+    let pcm: [u8] = [0, 16, 32, 16, 0, 240, 224, 240, 0, 16, 32, 16, 0, 240, 224, 240]
+    match SampleHandle::from_data_with_rate(&pcm[0], 16, 11025) {
+        Result::Ok(sample) => {
+            match SampleHandle::from_chip_ram(sample.ptr(), sample.bytes(), sample.sample_rate()) {
+                Result::Ok(borrowed) => {
+                    expect(borrowed.period_ntsc() > 0, "NTSC period is calculated")
+                    expect(borrowed.duration_ms(false) > 0, "duration is calculated")
+                },
+                Result::Err(_) => expect(false, "chip sample should be borrowable"),
+            }
+        },
+        Result::Err(_) => expect(false, "sample should allocate"),
+    }
+}
+
+// @covers amiga::sys::hardware::audio::AudioChannel::acquire(u8)
+// @covers amiga::sys::hardware::audio::AudioChannel::channel_num()
+// @covers amiga::sys::hardware::audio::AudioChannel::set_period(u16)
+// @covers amiga::sys::hardware::audio::AudioChannel::set_sample_rate(u32, bool)
+// @covers amiga::sys::hardware::audio::AudioChannel::set_sample_rate_auto(u32)
+// @covers amiga::sys::hardware::audio::AudioChannel::period()
+// @covers amiga::sys::hardware::audio::AudioChannel::set_volume(u16)
+// @covers amiga::sys::hardware::audio::AudioChannel::volume()
+// @covers amiga::sys::hardware::audio::AudioChannel::is_playing()
+// @covers amiga::sys::hardware::audio::AudioChannel::play(&SampleHandle, PlaybackMode)
+// @covers amiga::sys::hardware::audio::AudioChannel::play_native(&SampleHandle, PlaybackMode, bool)
+// @covers amiga::sys::hardware::audio::AudioChannel::play_native_auto(&SampleHandle, PlaybackMode)
+// @covers amiga::sys::hardware::audio::AudioChannel::play_raw(*u8, u16, u16, PlaybackMode)
+// @covers amiga::sys::hardware::audio::AudioChannel::play_asset(*u8, u32, u16, PlaybackMode)
+// @covers amiga::sys::hardware::audio::AudioChannel::play_asset_native(*u8, u32, u16, u16, PlaybackMode)
+// @covers amiga::sys::hardware::audio::AudioChannel::stop()
+// @covers amiga::sys::hardware::audio::AudioChannel::fade_to(u16, u32, fn())
+// @covers amiga::sys::hardware::audio::is_pal_system()
+@test("direct Paula channel validates, plays, and stops")
+pub fn audio_channel_contracts() {
+    expect(AudioChannel::acquire(4).is_err(), "invalid channel is rejected")
+    let pcm: [u8] = [0, 16, 32, 16, 0, 240, 224, 240, 0, 16, 32, 16, 0, 240, 224, 240]
+    let sample = match SampleHandle::from_data_with_rate(&pcm[0], 16, 11025) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "sample should allocate")
+            return
+        },
+    }
+    var channel = match AudioChannel::acquire(0) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "channel should construct")
+            return
+        },
+    }
+    expect(channel.channel_num() == 0 && !channel.is_playing(), "channel starts idle")
+    expect(channel.set_period(1).is_err() && channel.set_period(322).is_ok(), "period is validated")
+    expect(channel.set_sample_rate(11025, true).is_ok(), "explicit sample rate is accepted")
+    expect(channel.set_sample_rate_auto(11025).is_ok(), "native sample rate is accepted")
+    expect(channel.period() > 0, "period is retained")
+    expect(channel.set_volume(65).is_err() && channel.set_volume(0).is_ok(), "volume is validated")
+    expect(channel.volume() == 0, "volume is retained")
+    expect(channel.play(&sample, PlaybackMode::OneShot).is_ok() && channel.is_playing(), "sample starts")
+    channel.stop()
+    expect(!channel.is_playing(), "sample stops")
+    expect(channel.play_native(&sample, PlaybackMode::OneShot, true).is_ok(), "PAL native playback starts")
+    channel.stop()
+    expect(channel.play_native_auto(&sample, PlaybackMode::OneShot).is_ok(), "detected native playback starts")
+    channel.stop()
+    expect(channel.play_raw(sample.ptr(), sample.words(), 322, PlaybackMode::OneShot).is_ok(), "raw chip playback starts")
+    channel.stop()
+    expect(channel.play_asset(&pcm[0], 16, 322, PlaybackMode::OneShot).is_ok(), "cached asset playback starts")
+    channel.stop()
+    expect(channel.play_asset_native(&pcm[0], 16, 322, 324, PlaybackMode::OneShot).is_ok(), "native asset playback starts")
+    channel.stop()
+    channel.fade_to(2, 2, no_delay)
+    expect(channel.volume() == 2, "fade reaches target")
+    let _ = is_pal_system()
+}
+
+// @covers amiga::sys::hardware::audio::MultiChannel::acquire(ChannelMask, i8)
+// @covers amiga::sys::hardware::audio::MultiChannel::acquire_any(i8)
+// @covers amiga::sys::hardware::audio::MultiChannel::acquire_channel(u8, i8)
+// @covers amiga::sys::hardware::audio::MultiChannel::acquire_stereo(i8)
+// @covers amiga::sys::hardware::audio::MultiChannel::channels()
+// @covers amiga::sys::hardware::audio::MultiChannel::channel_count()
+// @covers amiga::sys::hardware::audio::MultiChannel::is_stereo()
+// @covers amiga::sys::hardware::audio::MultiChannel::set_volume(u16)
+// @covers amiga::sys::hardware::audio::MultiChannel::set_channel_volume(u8, u16)
+// @covers amiga::sys::hardware::audio::MultiChannel::channel_volume(u8)
+// @covers amiga::sys::hardware::audio::MultiChannel::set_period(u16)
+// @covers amiga::sys::hardware::audio::MultiChannel::set_sample_rate(u32, bool)
+// @covers amiga::sys::hardware::audio::MultiChannel::play(&SampleHandle, PlaybackMode)
+// @covers amiga::sys::hardware::audio::MultiChannel::play_native(&SampleHandle, PlaybackMode, bool)
+// @covers amiga::sys::hardware::audio::MultiChannel::play_raw(*u8, u32, u16, PlaybackMode)
+// @covers amiga::sys::hardware::audio::MultiChannel::stop()
+// @covers amiga::sys::hardware::audio::MultiChannel::is_playing()
+@test("OS-allocated Paula channels preserve per-channel state")
+pub fn multi_channel_contracts() {
+    expect(MultiChannel::acquire(ChannelMask::none(), 0).is_err(), "empty allocation is rejected")
+    let pcm: [u8] = [0, 16, 32, 16, 0, 240, 224, 240, 0, 16, 32, 16, 0, 240, 224, 240]
+    let sample = match SampleHandle::from_data_with_rate(&pcm[0], 16, 11025) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "sample should allocate")
+            return
+        },
+    }
+    {
+        var audio = match MultiChannel::acquire_any(0) {
+            Result::Ok(value) => value,
+            Result::Err(_) => {
+                expect(false, "one channel should allocate")
+                return
+            },
+        }
+        expect(audio.channel_count() == 1 && audio.channels().count() == 1, "acquire_any owns exactly one channel")
+        let channel = audio.channels().first().unwrap_or(9)
+        expect(audio.set_volume(1).is_ok(), "shared volume is set")
+        expect(audio.set_channel_volume(channel, 2).is_ok() && audio.channel_volume(channel) == 2, "channel volume is set")
+        expect(audio.set_period(322).is_ok() && audio.set_sample_rate(11025, true).is_ok(), "rate is configured")
+        expect(audio.play(&sample, PlaybackMode::OneShot).is_ok() && audio.is_playing(), "multichannel sample starts")
+        audio.stop()
+        expect(!audio.is_playing(), "multichannel sample stops")
+        expect(audio.play_native(&sample, PlaybackMode::OneShot, true).is_ok(), "native multichannel sample starts")
+        audio.stop()
+        expect(audio.play_raw(sample.ptr(), sample.bytes(), 322, PlaybackMode::OneShot).is_ok(), "raw multichannel sample starts")
+        audio.stop()
+    }
+    {
+        match MultiChannel::acquire_channel(0, 0) {
+            Result::Ok(value) => expect(value.channel_count() == 1, "specific channel allocates"),
+            Result::Err(_) => expect(false, "specific channel allocates"),
+        }
+    }
+    match MultiChannel::acquire_stereo(0) {
+        Result::Ok(value) => expect(value.is_stereo(), "stereo pair spans both sides"),
+        Result::Err(_) => expect(false, "stereo pair allocates"),
+    }
+}
+
+// @covers amiga::sys::hardware::audio::init_audio()
+// @covers amiga::sys::hardware::audio::init_channel(u8)
+// @covers amiga::sys::hardware::audio::play_sound(u8, &SampleHandle, bool)
+// @covers amiga::sys::hardware::audio::stop_all_channels()
+@test("Paula convenience helpers leave audio stopped")
+pub fn audio_helper_contracts() {
+    let pcm: [u8] = [0, 16, 32, 16, 0, 240, 224, 240, 0, 16, 32, 16, 0, 240, 224, 240]
+    let sample = match SampleHandle::from_data_with_rate(&pcm[0], 16, 11025) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "sample should allocate")
+            return
+        },
+    }
+    init_audio()
+    expect(init_channel(0).is_ok(), "channel helper constructs")
+    expect(play_sound(0, &sample, false).is_ok(), "sound helper starts")
+    stop_all_channels()
+}

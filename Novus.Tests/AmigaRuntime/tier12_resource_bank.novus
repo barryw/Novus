@@ -1,0 +1,102 @@
+from std::test::test import expect
+from amiga::sys::exec::memory::chip import Priority
+from amiga::sys::exec::memory::chip_cache import ChipCache
+from amiga::sys::exec::memory::allocation import MemHandle
+from amiga::sys::exec::memory::resource_bank import BankBuilder, BankError, BankState, ChipBudget, ResourceBank
+
+static var ASSET_A: [u8] = [1; 64]
+static var ASSET_B: [u8] = [2; 96]
+
+// @covers amiga::sys::exec::memory::resource_bank::BankBuilder::add_asset(u32, *u8, u32, Priority)
+// @covers amiga::sys::exec::memory::resource_bank::BankBuilder::add_asset_named(u32, *u8, u32, Priority, Str)
+// @covers amiga::sys::exec::memory::resource_bank::BankBuilder::build()
+// @covers amiga::sys::exec::memory::resource_bank::BankBuilder::new(Str)
+// @covers amiga::sys::exec::memory::resource_bank::BankBuilder::persistent(bool)
+// @covers amiga::sys::exec::memory::resource_bank::BankBuilder::priority(Priority)
+// @covers amiga::sys::exec::memory::resource_bank::ResourceBank::builder(Str)
+// @covers amiga::sys::exec::memory::resource_bank::ResourceBank::entry_count()
+// @covers amiga::sys::exec::memory::resource_bank::ResourceBank::get_by_id(u32)
+// @covers amiga::sys::exec::memory::resource_bank::ResourceBank::is_loaded()
+// @covers amiga::sys::exec::memory::resource_bank::ResourceBank::is_persistent()
+// @covers amiga::sys::exec::memory::resource_bank::ResourceBank::load()
+// @covers amiga::sys::exec::memory::resource_bank::ResourceBank::name()
+// @covers amiga::sys::exec::memory::resource_bank::ResourceBank::pin()
+// @covers amiga::sys::exec::memory::resource_bank::ResourceBank::state()
+// @covers amiga::sys::exec::memory::resource_bank::ResourceBank::total_size()
+// @covers amiga::sys::exec::memory::resource_bank::ResourceBank::unload()
+// @covers amiga::sys::exec::memory::resource_bank::ResourceBank::unpin()
+// @covers amiga::sys::exec::memory::resource_bank::ResourceBank::will_fit(u32)
+@test("resource banks load, share, pin, and unload chip assets")
+pub fn resource_bank_lifecycle() {
+    ChipCache::init()
+    let source = match MemHandle::new_fast(160) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            ChipCache::shutdown()
+            expect(false, "fast source memory allocates")
+            return
+        },
+    }
+    var builder = BankBuilder::new("level-one")
+    builder.priority(Priority::High)
+    builder.persistent(true)
+    builder.add_asset(12001, source.ptr(), 64, Priority::Normal)
+    builder.add_asset_named(12002, source.ptr() + 64, 96, Priority::High, "tiles")
+    var bank = match builder.build() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            ChipCache::shutdown()
+            expect(false, "bank builds")
+            return
+        },
+    }
+    expect(bank.name().len() == 9 && bank.entry_count() == 2, "bank metadata is retained")
+    expect(bank.total_size() == 160 && bank.is_persistent(), "bank size and persistence are retained")
+    expect(!bank.is_loaded() && matches!(bank.state(), BankState::Unloaded), "bank starts unloaded")
+    expect(bank.get_by_id(12001).is_none(), "unloaded assets are unavailable")
+    expect(bank.will_fit(160) && !bank.will_fit(159), "fit check includes exact boundary")
+    expect(bank.load().is_ok() && bank.is_loaded(), "bank loads")
+    expect(bank.load().is_err(), "duplicate load is rejected")
+    expect(bank.get_by_id(12001).unwrap_or(null) != null && bank.get_by_id(99999).is_none(), "loaded lookup is exact")
+    expect(ChipCache::pin_count(12001) == 1, "load pins each asset")
+    bank.pin()
+    expect(ChipCache::pin_count(12001) == 2, "explicit pin increments ownership")
+    bank.unpin()
+    expect(ChipCache::pin_count(12001) == 1, "explicit unpin balances ownership")
+    bank.unload()
+    expect(!bank.is_loaded() && ChipCache::pin_count(12001) == 0, "unload releases bank pins")
+    ChipCache::shutdown()
+
+    var via_factory = ResourceBank::builder("empty")
+    expect(via_factory.build().is_ok(), "factory builds an empty bank")
+}
+
+// @covers amiga::sys::exec::memory::resource_bank::BankError::message()
+// @covers amiga::sys::exec::memory::resource_bank::ChipBudget::custom(u32, u32, u32, u32)
+// @covers amiga::sys::exec::memory::resource_bank::ChipBudget::level_will_fit(&ResourceBank)
+// @covers amiga::sys::exec::memory::resource_bank::ChipBudget::persistent_will_fit(&ResourceBank)
+// @covers amiga::sys::exec::memory::resource_bank::ChipBudget::typical(u32)
+// @covers amiga::sys::exec::memory::resource_bank::ChipBudget::unallocated()
+@test("resource-bank budgets and errors report exact boundaries")
+pub fn resource_bank_budget_contracts() {
+    expect(BankError::OutOfMemory.message() != null, "out-of-memory message exists")
+    expect(BankError::NotLoaded.message() != null, "not-loaded message exists")
+    expect(BankError::AlreadyLoaded.message() != null, "already-loaded message exists")
+    expect(BankError::AssetNotFound.message() != null, "not-found message exists")
+    expect(BankError::TooManyEntries.message() != null, "capacity message exists")
+    var builder = ResourceBank::builder("budget")
+    builder.add_asset(12101, &var ASSET_A[0], 64, Priority::Normal)
+    let bank = match builder.build() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "budget bank builds")
+            return
+        },
+    }
+    let typical = ChipBudget::typical(256)
+    expect(typical.unallocated() == 0, "typical budget assigns all memory")
+    expect(typical.level_will_fit(&bank) && typical.persistent_will_fit(&bank), "64-byte bank fits both typical reserves")
+    let custom = ChipBudget::custom(256, 63, 64, 32)
+    expect(custom.unallocated() == 97, "custom budget reports remainder")
+    expect(custom.level_will_fit(&bank) && !custom.persistent_will_fit(&bank), "custom category limits are exact")
+}

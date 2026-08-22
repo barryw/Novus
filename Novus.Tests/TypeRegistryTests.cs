@@ -83,6 +83,55 @@ pub struct Point {
     }
 
     [Fact]
+    public void SharedHeader_PrefixesNovusDeviceThatClashesWithNdkDevice()
+    {
+        var nativeAttributes = new AttributeCollection();
+        nativeAttributes.Add(new AttributeInfo(
+            KnownAttributes.ExternType,
+            new SourceLocation("native.novus", 1, 1, 0, "")));
+        var nativeModule = new IrModule();
+        nativeModule.AddStruct(new IrStructType("Device", [], attributes: nativeAttributes));
+        var module = BuildIR(@"
+pub struct AudioDeviceHandle {
+    value: u32,
+}
+pub struct Device {
+    handle: AudioDeviceHandle,
+}
+pub enum DeviceResult {
+    Ok(Device),
+}");
+        var registry = new TypeRegistry();
+        registry.RegisterModule(nativeModule);
+        registry.RegisterModule(module);
+
+        var header = CCodeGenerator.GenerateSharedTypesHeader(registry);
+
+        Assert.Contains("typedef struct nv_Device nv_Device;", header);
+        Assert.Contains("struct nv_Device {", header);
+        Assert.Contains("AudioDeviceHandle handle;", header);
+        Assert.Contains("nv_Device _0;", header);
+        Assert.True(
+            header.IndexOf("struct AudioDeviceHandle {", StringComparison.Ordinal) <
+            header.IndexOf("struct nv_Device {", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void SharedHeader_DeclaresFunctionPointerStructFields()
+    {
+        var module = BuildIR(@"
+pub struct Handler {
+    callback: fn(u32) -> i16,
+}");
+        var registry = new TypeRegistry();
+        registry.RegisterModule(module);
+
+        var header = CCodeGenerator.GenerateSharedTypesHeader(registry);
+
+        Assert.Contains("int16_t (*callback)(uint32_t);", header);
+    }
+
+    [Fact]
     public void SharedHeader_KeepsNativeAndNovusStructsWithSameName()
     {
         var nativeAttributes = new AttributeCollection();
@@ -114,6 +163,7 @@ pub enum ShapeResult {
 
         Assert.Contains("typedef struct nv_Point nv_Point;", header);
         Assert.Contains("struct nv_Point {", header);
+        Assert.Contains("nv_Point center;", header);
         Assert.True(
             header.IndexOf("struct nv_Point {", StringComparison.Ordinal) <
             header.IndexOf("struct Ellipse {", StringComparison.Ordinal));

@@ -1,0 +1,137 @@
+from std::test::test import expect
+from amiga::raw::structs import ColorMap, ViewPort
+from amiga::sys::audio::errors import AudioError
+from amiga::sys::dos::errors import DosError, dos_error_from_code, dos_error_to_code, dos_last_error
+from amiga::sys::graphics::errors import GraphicsError, graphics_error_to_code
+from amiga::sys::graphics::palette import Color, from_rgb4, get_color, load_palette, rgb, set_color
+from amiga::sys::intuition::screen import ScreenBuilder
+
+// @covers amiga::sys::graphics::palette::rgb(u8, u8, u8)
+@test("rgb preserves eight bit components")
+pub fn rgb_contract() {
+    let color = rgb(17, 34, 51)
+    expect(color.r == 17 && color.g == 34 && color.b == 51, "rgb stores each component")
+}
+
+// @covers amiga::sys::graphics::palette::from_rgb4(u8, u8, u8)
+@test("rgb4 expands nibbles exactly")
+pub fn rgb4_contract() {
+    let color = from_rgb4(15, 8, 1)
+    expect(color.r == 255 && color.g == 136 && color.b == 17, "rgb4 scales by seventeen")
+}
+
+// @covers amiga::sys::graphics::palette::Color::to_rgb4()
+@test("color converts back to rgb4")
+pub fn color_to_rgb4_contract() {
+    let color = Color { r: 255, g: 136, b: 17 }
+    let (r, g, b) = color.to_rgb4()
+    expect(r == 15 && g == 8 && b == 1, "rgb4 conversion divides by seventeen")
+}
+
+// @covers amiga::sys::graphics::palette::Color::red()
+@test("color exposes red")
+pub fn color_red_contract() {
+    expect(Color { r: 7, g: 8, b: 9 }.red() == 7, "red component is preserved")
+}
+
+// @covers amiga::sys::graphics::palette::Color::green()
+@test("color exposes green")
+pub fn color_green_contract() {
+    expect(Color { r: 7, g: 8, b: 9 }.green() == 8, "green component is preserved")
+}
+
+// @covers amiga::sys::graphics::palette::Color::blue()
+@test("color exposes blue")
+pub fn color_blue_contract() {
+    expect(Color { r: 7, g: 8, b: 9 }.blue() == 9, "blue component is preserved")
+}
+
+// @covers amiga::sys::graphics::palette::set_color(*ViewPort, u8, Color)
+@test("set color rejects a null viewport")
+pub fn set_color_null_contract() {
+    match set_color((*ViewPort)0, 0, Color { r: 0, g: 0, b: 0 }) {
+        Result::Err(error) => expect(graphics_error_to_code(error) == -304, "null viewport is invalid"),
+        Result::Ok(_) => expect(false, "null viewport must fail"),
+    }
+}
+
+// @covers amiga::sys::graphics::palette::load_palette(*ViewPort, *Color, u32)
+@test("load palette rejects a null viewport")
+pub fn load_palette_null_contract() {
+    match load_palette((*ViewPort)0, (*Color)0, 0) {
+        Result::Err(error) => expect(graphics_error_to_code(error) == -304, "null viewport is invalid"),
+        Result::Ok(_) => expect(false, "null viewport must fail"),
+    }
+}
+
+// @covers amiga::sys::graphics::palette::get_color(*ColorMap, u8)
+@test("get color rejects a null colormap")
+pub fn get_color_null_contract() {
+    match get_color((*ColorMap)0, 0) {
+        Result::Err(error) => expect(graphics_error_to_code(error) == -304, "null colormap is invalid"),
+        Result::Ok(_) => expect(false, "null colormap must fail"),
+    }
+}
+
+// @covers amiga::sys::graphics::palette::set_color(*ViewPort, u8, Color)
+// @covers amiga::sys::graphics::palette::load_palette(*ViewPort, *Color, u32)
+// @covers amiga::sys::graphics::palette::get_color(*ColorMap, u8)
+@test("AGA palette wrappers update live 8-bit colors including entry 255")
+pub fn aga_palette_contract() {
+    let screen = ScreenBuilder::new().title("Tier 2 AGA palette").depth(8).build().unwrap()
+    let viewport = screen.viewport()
+    var first: [Color] = [rgb(1, 2, 3), rgb(4, 5, 6)]
+    load_palette(viewport, &var first[0], 2).unwrap()
+    let expected = rgb(18, 52, 86)
+    set_color(viewport, 255, expected).unwrap()
+    let colormap = unsafe { (*viewport).ColorMap }
+    let observed = get_color(colormap, 255).unwrap()
+    expect(observed.r == expected.r && observed.g == expected.g && observed.b == expected.b,
+        "AGA retains all eight bits at the last palette entry")
+}
+
+// @covers amiga::sys::graphics::errors::graphics_error_to_code(GraphicsError)
+@test("graphics errors retain stable codes")
+pub fn graphics_error_code_contract() {
+    expect(graphics_error_to_code(GraphicsError::InvalidViewPort) == -314, "graphics code is stable")
+}
+
+// @covers amiga::sys::graphics::errors::GraphicsError::message()
+@test("graphics errors expose messages")
+pub fn graphics_error_message_contract() {
+    expect((u32)GraphicsError::InvalidBitMap.message() != 0, "graphics message is non-null")
+}
+
+// @covers amiga::sys::audio::errors::AudioError::message()
+@test("audio errors expose messages")
+pub fn audio_error_message_contract() {
+    expect((u32)AudioError::InvalidChannel.message() != 0, "audio message is non-null")
+}
+
+// @covers amiga::sys::dos::errors::dos_error_from_code(i32)
+@test("dos errors decode stable codes")
+pub fn dos_error_from_code_contract() {
+    match dos_error_from_code(205) {
+        DosError::NotFound => {},
+        _ => expect(false, "205 must decode to object not found"),
+    }
+}
+
+// @covers amiga::sys::dos::errors::dos_error_to_code(DosError)
+@test("dos errors encode stable codes")
+pub fn dos_error_to_code_contract() {
+    expect(dos_error_to_code(DosError::DiskFull) == 221, "disk full code is stable")
+}
+
+// @covers amiga::sys::dos::errors::dos_last_error()
+@test("dos last error returns a valid value")
+pub fn dos_last_error_contract() {
+    let error = dos_last_error()
+    expect((u32)error.message() != 0, "last error has a message")
+}
+
+// @covers amiga::sys::dos::errors::DosError::message()
+@test("dos errors expose messages")
+pub fn dos_error_message_contract() {
+    expect((u32)DosError::NoDisk.message() != 0, "dos message is non-null")
+}

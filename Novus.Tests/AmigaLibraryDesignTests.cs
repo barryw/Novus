@@ -92,13 +92,7 @@ public class AmigaLibraryDesignTests
             """;
         var parser = NovusParserFactory.CreateParser(source, new Novus.Diagnostics.DiagnosticBag(),
             "test.novus", NovusParserFactory.ParseMode.Compilation);
-        var analyzer = new SemanticAnalyzer("test.novus", source, StdLibPath);
-        analyzer.Analyze(parser.compilationUnit());
-        Assert.False(analyzer.Diagnostics.HasErrors, analyzer.Diagnostics.FormatDiagnostics());
-
-        parser = NovusParserFactory.CreateParser(source, new Novus.Diagnostics.DiagnosticBag(),
-            "test.novus", NovusParserFactory.ParseMode.Compilation);
-        var builder = new IrBuilder(analyzer.GetResult());
+        var builder = new IrBuilder(skipAutoImports: false);
         builder.SetStdLibPath(StdLibPath);
         builder.SetInputFilePath("test.novus");
 
@@ -134,7 +128,13 @@ public class AmigaLibraryDesignTests
             """;
         var parser = NovusParserFactory.CreateParser(source, new Novus.Diagnostics.DiagnosticBag(),
             "test.novus", NovusParserFactory.ParseMode.Compilation);
-        var builder = new IrBuilder(skipAutoImports: false);
+        var analyzer = new SemanticAnalyzer("test.novus", source, StdLibPath);
+        analyzer.Analyze(parser.compilationUnit());
+        Assert.False(analyzer.Diagnostics.HasErrors, analyzer.Diagnostics.FormatDiagnostics());
+
+        parser = NovusParserFactory.CreateParser(source, new Novus.Diagnostics.DiagnosticBag(),
+            "test.novus", NovusParserFactory.ParseMode.Compilation);
+        var builder = new IrBuilder(analyzer.GetResult());
         builder.SetStdLibPath(StdLibPath);
         builder.SetInputFilePath("test.novus");
 

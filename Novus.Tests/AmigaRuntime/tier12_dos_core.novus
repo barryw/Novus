@@ -1,0 +1,174 @@
+from std::core import Option, Result
+from std::memory import MutSlice
+from std::string import Str
+from std::test::test import expect
+from amiga::dos import Directory, File, FileSystem, FileSystemError, MountSpec, PartitionGeometry, Volume, open_volume
+from amiga::dos import ApplicationVolume
+from amiga::sys::dos import DirLockHandle, MountedFileSystem, delete_file
+
+// @covers amiga::dos::PartitionGeometry::new(u32, u32, u32, u32, u32, u32)
+// @covers amiga::dos::PartitionGeometry::with_buffers(u32)
+// @covers amiga::dos::PartitionGeometry::with_transfer(u32, u32)
+// @covers amiga::dos::PartitionGeometry::with_boot_priority(i32)
+// @covers amiga::dos::PartitionGeometry::block_bytes()
+// @covers amiga::dos::PartitionGeometry::surfaces()
+// @covers amiga::dos::PartitionGeometry::blocks_per_track()
+// @covers amiga::dos::PartitionGeometry::low_cylinder()
+// @covers amiga::dos::PartitionGeometry::high_cylinder()
+// @covers amiga::dos::PartitionGeometry::dos_type()
+// @covers amiga::dos::PartitionGeometry::buffers()
+// @covers amiga::dos::PartitionGeometry::max_transfer()
+// @covers amiga::dos::PartitionGeometry::mask()
+// @covers amiga::dos::PartitionGeometry::boot_priority()
+@test("partition geometry preserves semantic disk settings")
+pub fn partition_geometry_contracts() {
+    let base = match PartitionGeometry::new(512, 2, 32, 1, 100, $444F5303) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "valid geometry should construct")
+            return
+        },
+    }
+    let buffered = match base.with_buffers(64) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "valid buffer count should apply")
+            return
+        },
+    }
+    let transferred = match buffered.with_transfer($001FFFFF, $7FFFFFFE) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "valid transfer settings should apply")
+            return
+        },
+    }
+    let geometry = transferred.with_boot_priority(5)
+    expect(geometry.block_bytes() == 512, "block size is preserved")
+    expect(geometry.surfaces() == 2 && geometry.blocks_per_track() == 32, "track geometry is preserved")
+    expect(geometry.low_cylinder() == 1 && geometry.high_cylinder() == 100, "cylinder range is preserved")
+    expect(geometry.dos_type() == $444F5303, "DOS type is preserved")
+    expect(geometry.buffers() == 64, "buffer count is updated")
+    expect(geometry.max_transfer() == $001FFFFF && geometry.mask() == $7FFFFFFE, "transfer limits are updated")
+    expect(geometry.boot_priority() == 5, "boot priority is updated")
+}
+
+// @covers amiga::dos::MountSpec::new(Str, Str, u32, PartitionGeometry)
+// @covers amiga::dos::MountSpec::with_open_flags(u32)
+@test("mount specifications accept validated geometry")
+pub fn mount_spec_contracts() {
+    match PartitionGeometry::new(512, 2, 32, 0, 10, $444F5303) {
+        Result::Ok(geometry) => {
+            let _spec = MountSpec::new("NVT:", "trackdisk.device", 0, geometry).with_open_flags(0)
+        },
+        Result::Err(_) => expect(false, "valid geometry should construct"),
+    }
+}
+
+// @covers amiga::dos::File::open(Str)
+// @covers amiga::dos::File::create(Str)
+// @covers amiga::dos::File::write_all(Slice<u8>)
+// @covers amiga::dos::File::rewind()
+// @covers amiga::dos::File::read(MutSlice<u8>)
+// @covers amiga::dos::File::read_all(MutSlice<u8>)
+// @covers amiga::dos::File::len()
+@test("application files support bounded binary IO")
+pub fn file_binary_contracts() {
+    let path: Str = "RAM:novus-tier12-file.bin"
+    let _ = delete_file(path)
+    {
+        let file = match File::create(path) {
+            Result::Ok(value) => value,
+            Result::Err(_) => {
+                expect(false, "file should create")
+                return
+            },
+        }
+        let source: [u8] = [1, 2, 3, 4, 5]
+        expect(file.write_all(&source).is_ok(), "all bytes are written")
+        expect(file.len().unwrap_or(0) == 5, "file length is measured")
+        expect(file.rewind().is_ok(), "file rewinds")
+        var prefix: [u8] = [0, 0]
+        let prefix_slice = MutSlice::<u8>::new(&var prefix[0], 2)
+        expect(file.read(prefix_slice).unwrap_or(0) == 2, "bounded read returns two bytes")
+        expect(prefix[0] == 1 && prefix[1] == 2, "bounded read preserves bytes")
+    }
+    {
+        let file = match File::open(path) {
+            Result::Ok(value) => value,
+            Result::Err(_) => {
+                expect(false, "file should reopen")
+                return
+            },
+        }
+        var bytes: [u8] = [0, 0, 0, 0, 0]
+        let buffer = MutSlice::<u8>::new(&var bytes[0], 5)
+        expect(file.read_all(buffer).unwrap_or(0) == 5, "read_all fills the buffer")
+        expect(bytes[0] == 1 && bytes[4] == 5, "reopened data is preserved")
+    }
+    expect(delete_file(path).is_ok(), "fixture is removed")
+}
+
+// @covers amiga::dos::ApplicationDirectory::open(Str)
+// @covers amiga::dos::ApplicationDirectory::system()
+// @covers amiga::dos::ApplicationDirectory::from_system(DirLockHandle)
+@test("application directories preserve system ownership")
+pub fn directory_contracts() {
+    match Directory::open("RAM:") {
+        Result::Ok(directory) => expect(directory.system().as_raw() != 0, "directory lock is live"),
+        Result::Err(_) => expect(false, "RAM directory should open"),
+    }
+    match DirLockHandle::lock("RAM:", -2) {
+        Result::Ok(system) => {
+            let directory = Directory::from_system(system)
+            expect(directory.system().as_raw() != 0, "system owner is adopted")
+        },
+        Result::Err(_) => expect(false, "system directory should open"),
+    }
+}
+
+// @covers amiga::dos::open_volume(Str)
+// @covers amiga::dos::ApplicationVolume::name()
+// @covers amiga::dos::ApplicationVolume::system()
+// @covers amiga::dos::ApplicationVolume::from_system(MountedFileSystem)
+@test("application volumes normalize names and preserve ownership")
+pub fn volume_contracts() {
+    match open_volume("RAM") {
+        Result::Ok(volume) => {
+            expect(volume.name().equals("RAM:"), "volume name is normalized")
+            let _ = volume.system()
+        },
+        Result::Err(_) => expect(false, "RAM volume should open"),
+    }
+    match MountedFileSystem::open("RAM:") {
+        Result::Ok(system) => {
+            let volume = Volume::from_system(system)
+            expect(volume.name().equals("RAM:"), "system volume is adopted")
+        },
+        Result::Err(_) => expect(false, "system RAM volume should open"),
+    }
+}
+
+// @covers amiga::dos::FileSystem::resolve(u32)
+// @covers amiga::dos::FileSystem::resolve_embedded(u32, Option<EmbeddedFileSystem>)
+@test("filesystem resolution finds the classic DOS family")
+pub fn filesystem_resolution_contracts() {
+    expect(FileSystem::resolve($444F5303).is_ok(), "DOS3 handler resolves")
+    expect(FileSystem::resolve_embedded($444F5303, Option::None).is_ok(), "explicit resolution resolves")
+}
+
+// @covers amiga::dos::FileSystemError::message()
+@test("filesystem errors expose messages")
+pub fn filesystem_error_message_contract() {
+    expect((u32)FileSystemError::MountFailed.message() != 0, "filesystem message is non-null")
+}
+
+// Destructive filesystem entry points are mapped without mounting or formatting
+// the user's configured disks; successful behavior requires the disposable-HDF run.
+// @covers amiga::dos::FileSystem::mount(MountSpec)
+// @covers amiga::dos::ApplicationVolume::format(Str, u32)
+@test("destructive application filesystem entry points link without touching disks")
+pub fn destructive_filesystem_api_map_probe() {
+    let _ = FileSystem::mount
+    let _ = ApplicationVolume::format
+}

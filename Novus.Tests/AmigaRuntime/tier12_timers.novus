@@ -1,0 +1,150 @@
+from std::test::test import expect
+from amiga::timer import ApplicationAsyncTimer, ApplicationInterval, ApplicationTimer, Duration, delay, elapsed_since, now
+from amiga::sys::timer import TimerError
+
+// @covers amiga::sys::timer::device::Duration::secs(u32)
+// @covers amiga::sys::timer::device::Duration::millis(u32)
+// @covers amiga::sys::timer::device::Duration::micros(u32)
+// @covers amiga::sys::timer::device::Duration::new(u32, u32)
+// @covers amiga::sys::timer::device::Duration::zero()
+// @covers amiga::sys::timer::device::Duration::get_secs()
+// @covers amiga::sys::timer::device::Duration::get_micros()
+// @covers amiga::sys::timer::device::Duration::as_millis()
+// @covers amiga::sys::timer::device::Duration::as_micros()
+// @covers amiga::sys::timer::device::Duration::add(Duration)
+// @covers amiga::sys::timer::device::Duration::sub(Duration)
+// @covers amiga::sys::timer::device::Duration::cmp(Duration)
+// @covers amiga::sys::timer::device::Duration::is_zero()
+@test("timer durations normalize and preserve arithmetic")
+pub fn duration_contracts() {
+    let second = Duration::secs(1)
+    let half = Duration::millis(500)
+    let precise = Duration::micros(250000)
+    let normalized = Duration::new(0, 1500000)
+    expect(second.get_secs() == 1 && second.get_micros() == 0, "seconds are preserved")
+    expect(half.as_millis() == 500 && precise.as_micros() == 250000, "units convert exactly")
+    expect(normalized.get_secs() == 1 && normalized.get_micros() == 500000, "construction normalizes")
+    let sum = half.add(precise)
+    expect(sum.as_millis() == 750, "addition combines durations")
+    expect(sum.sub(precise).cmp(half) == 0, "subtraction restores the duration")
+    expect(Duration::zero().is_zero(), "zero is detected")
+}
+
+// @covers amiga::timer::ApplicationTimer::microhz()
+// @covers amiga::timer::ApplicationTimer::vblank()
+// @covers amiga::timer::ApplicationTimer::eclock()
+// @covers amiga::timer::ApplicationTimer::time()
+// @covers amiga::timer::ApplicationTimer::micros()
+// @covers amiga::timer::ApplicationTimer::delay(Duration)
+// @covers amiga::timer::ApplicationTimer::wait_until(Duration)
+// @covers amiga::timer::ApplicationTimer::wait_frames(u32)
+// @covers amiga::timer::ApplicationTimer::system()
+// @covers amiga::sys::timer::device::TimerHandle::microhz()
+// @covers amiga::sys::timer::device::TimerHandle::vblank()
+// @covers amiga::sys::timer::device::TimerHandle::eclock()
+// @covers amiga::sys::timer::device::TimerHandle::get_time()
+// @covers amiga::sys::timer::device::TimerHandle::get_micros()
+// @covers amiga::sys::timer::device::TimerHandle::delay(Duration)
+// @covers amiga::sys::timer::device::TimerHandle::wait_until(Duration)
+// @covers amiga::sys::timer::device::TimerHandle::wait_frames(u32)
+// @covers amiga::sys::timer::device::TimerHandle::as_raw()
+@test("application timers own every supported timer device unit")
+pub fn timer_contracts() {
+    match ApplicationTimer::microhz() {
+        Result::Ok(timer) => {
+            var value = timer
+            expect(value.system().as_raw() != null, "timer request is live")
+            expect(value.time().is_ok() && value.micros() != 0, "time queries succeed")
+            expect(value.delay(Duration::millis(1)).is_ok(), "microsecond delay succeeds")
+            expect(value.wait_until(Duration::zero()).is_ok(), "past deadline returns immediately")
+        },
+        Result::Err(_) => expect(false, "microhz timer should open"),
+    }
+    match ApplicationTimer::vblank() {
+        Result::Ok(timer) => {
+            var value = timer
+            expect(value.wait_frames(1).is_ok(), "one frame delay succeeds")
+        },
+        Result::Err(_) => expect(false, "vblank timer should open"),
+    }
+    expect(ApplicationTimer::eclock().is_ok(), "eclock timer should open")
+}
+
+// @covers amiga::timer::ApplicationInterval::new(Duration)
+// @covers amiga::timer::ApplicationInterval::tick()
+// @covers amiga::timer::ApplicationInterval::reset()
+// @covers amiga::timer::ApplicationInterval::elapsed()
+// @covers amiga::timer::ApplicationInterval::system()
+// @covers amiga::sys::timer::device::Interval::new(Duration)
+// @covers amiga::sys::timer::device::Interval::tick()
+// @covers amiga::sys::timer::device::Interval::reset()
+// @covers amiga::sys::timer::device::Interval::elapsed()
+@test("application intervals report elapsed ticks and reset")
+pub fn interval_contracts() {
+    match ApplicationInterval::new(Duration::millis(1)) {
+        Result::Ok(interval) => {
+            var value = interval
+            let _ = value.system()
+            expect(delay(Duration::millis(2)).is_ok(), "settling delay succeeds")
+            expect(value.tick().unwrap_or(false), "elapsed interval ticks")
+            expect(value.reset().is_ok(), "interval resets")
+            expect(value.elapsed().is_ok(), "elapsed duration is available")
+        },
+        Result::Err(_) => expect(false, "interval should open"),
+    }
+}
+
+// @covers amiga::timer::ApplicationAsyncTimer::new()
+// @covers amiga::timer::ApplicationAsyncTimer::vblank()
+// @covers amiga::timer::ApplicationAsyncTimer::start(Duration)
+// @covers amiga::timer::ApplicationAsyncTimer::check()
+// @covers amiga::timer::ApplicationAsyncTimer::wait()
+// @covers amiga::timer::ApplicationAsyncTimer::wait_or_break(Duration)
+// @covers amiga::timer::ApplicationAsyncTimer::system()
+// @covers amiga::sys::timer::device::AsyncTimer::new()
+// @covers amiga::sys::timer::device::AsyncTimer::vblank()
+// @covers amiga::sys::timer::device::AsyncTimer::start(Duration)
+// @covers amiga::sys::timer::device::AsyncTimer::check()
+// @covers amiga::sys::timer::device::AsyncTimer::wait()
+// @covers amiga::sys::timer::device::AsyncTimer::wait_or_break(Duration)
+@test("application async timers complete and remain reusable")
+pub fn application_async_timer_contracts() {
+    match ApplicationAsyncTimer::new() {
+        Result::Ok(timer) => {
+            var value = timer
+            let _ = value.system()
+            value.start(Duration::millis(1))
+            value.wait()
+            expect(!value.check(), "completed request is no longer pending")
+            let _ = value.wait_or_break(Duration::millis(1))
+        },
+        Result::Err(_) => expect(false, "async timer should open"),
+    }
+    expect(ApplicationAsyncTimer::vblank().is_ok(), "vblank async timer should open")
+}
+
+// @covers amiga::timer::delay(Duration)
+// @covers amiga::timer::now()
+// @covers amiga::timer::elapsed_since(Duration)
+// @covers amiga::sys::timer::device::delay(Duration)
+// @covers amiga::sys::timer::device::now()
+// @covers amiga::sys::timer::device::elapsed_since(Duration)
+@test("application timer helpers measure elapsed time")
+pub fn timer_helper_contracts() {
+    match now() {
+        Result::Ok(start) => {
+            expect(delay(Duration::millis(1)).is_ok(), "global delay succeeds")
+            match elapsed_since(start) {
+                Result::Ok(elapsed) => expect(elapsed.as_micros() > 0, "elapsed time advances"),
+                Result::Err(_) => expect(false, "elapsed query succeeds"),
+            }
+        },
+        Result::Err(_) => expect(false, "current time is available"),
+    }
+}
+
+// @covers amiga::sys::timer::device::TimerError::message()
+@test("timer errors expose messages")
+pub fn timer_error_message_contract() {
+    expect((u32)TimerError::OpenFailed.message() != 0, "timer message is non-null")
+}

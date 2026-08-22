@@ -37,6 +37,9 @@ from amiga::raw::consts import TAG_DONE
 ///
 /// Returns an allocation error if the tag list cannot grow.
 pub fn make_tags(tags_ptr: *TagItem, count: u32) -> Result<Vec<TagItem>, MemoryError> {
+    if tags_ptr == null && count != 0 {
+        return Result::Err(MemoryError::InvalidAddress)
+    }
     var result: Vec<TagItem> = Vec::<TagItem>::new()
 
     // Add all user-provided tags

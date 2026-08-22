@@ -900,6 +900,21 @@ public class TypeParser : ITypeSubstitutionEngine
             }
         }
 
+        if (type is IrFunctionPointerType functionPointer)
+        {
+            var parameters = functionPointer.ParameterTypes
+                .Select(parameter => SubstituteGenericTypesInternal(parameter, substitutions, visitedStructs))
+                .ToList();
+            var returnType = SubstituteGenericTypesInternal(
+                functionPointer.ReturnType, substitutions, visitedStructs);
+            if (!parameters.SequenceEqual(functionPointer.ParameterTypes) || returnType != functionPointer.ReturnType)
+            {
+                return _context.GetFunctionPointerType(
+                    parameters, returnType, functionPointer.CallingConvention,
+                    functionPointer.ParameterRegisters, functionPointer.ReturnRegister);
+            }
+        }
+
         // Tuple type substitution - tuples are special structs with element types
         if (type is IrTupleType tupleType)
         {

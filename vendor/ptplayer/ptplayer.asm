@@ -1440,6 +1440,16 @@ same_pattern:
 
 	rts
 
+; C/manual-call entry point. The interrupt handler normally initializes a4
+; before entering __mt_music, but external callers cannot rely on that.
+	xdef	__mt_music_c
+__mt_music_c:
+	move.l	a4,-(sp)
+	lea	mt_data,a4
+	bsr	__mt_music
+	move.l	(sp)+,a4
+	rts
+
 
 	ifeq	MINIMAL
 ;---------------------------------------------------------------------------

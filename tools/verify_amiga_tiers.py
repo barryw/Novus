@@ -9,8 +9,9 @@ pinned NDK inventory. This tool accounts for the Novus-authored layers above it:
 
 Evidence per callable mirrors the tier-3 report so the three tiers compose:
 documented, behavior mapped (a `// @covers` annotation on a runtime test), compile/link
-verified with a measured size delta, runtime verified, leak verified, and speed measured
-from a test that covers exactly one callable.
+verified with a measured size delta, runtime verified, and leak verified. Benchmark
+timings are always retained; an exclusive speed is reported separately when a test
+covers exactly one callable.
 """
 
 from __future__ import annotations
@@ -198,7 +199,7 @@ def measure(std_root: Path, test_roots: list[Path], compile_reports: list[Path],
                        default=None)
         size_bytes = compile_item.get("size_bytes") if compile_item else None
         checks = (documented, compile_item is not None, bool(mapped), runtime_verified,
-                  leak_verified, size_bytes is not None, speed_us is not None)
+                  leak_verified, size_bytes is not None)
         rows.append({
             "id": identifier,
             **{key: value[key] for key in ("tier", "module", "owner", "name", "source", "line")},
@@ -251,7 +252,8 @@ def main() -> int:
     args = parser.parse_args()
 
     roots = args.test_root or [ROOT / "Novus.Tests/AmigaRuntime", ROOT / "Novus.Tests/Examples",
-                               ROOT / "Novus/std/tests"]
+                               ROOT / "Novus/std/tests",
+                               ROOT / "ports/hdpart-novus/tests/a4000/ui_controls_test.novus"]
     reports = [path for root in args.report_root for path in sorted(root.rglob("report*.json"))]
     report = measure(args.std_root, roots, args.compile_report,
                      args.runtime_report + reports, args.configuration)

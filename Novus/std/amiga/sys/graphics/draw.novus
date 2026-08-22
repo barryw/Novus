@@ -15,9 +15,11 @@
 from std::core import Result, Option
 from amiga::sys::graphics::errors import GraphicsError
 from amiga::sys::graphics::shapes import Point, Rect, Ellipse
-from amiga::raw::structs import RastPort, Window
+from amiga::raw::consts import BMF_CLEAR
+from amiga::raw::structs import BitMap, RastPort
 from amiga::raw::graphics import Move, Draw, SetAPen, SetBPen, SetDrMd, GetAPen, GetBPen, GetDrMd
-from amiga::raw::graphics import RectFill, EraseRect, WritePixel, ReadPixel, DrawEllipse, PolyDraw, SetRast
+from amiga::raw::graphics import AllocBitMap, FreeBitMap, InitRastPort, ReadPixelLine8
+from amiga::raw::graphics import RectFill, EraseRect, WritePixel, ReadPixel, DrawEllipse, PolyDraw, SetRast, WaitBlit
 
 // ============================================================================
 // Draw Mode Constants
@@ -315,17 +317,37 @@ impl DrawContext {
     /// Returns the pen number (color index) at that location.
     /// Returns -1 if the coordinates are outside the bitmap.
     pub fn get_pixel(&self, x: i16, y: i16) -> i32 {
-        let result: u32 = ReadPixel(self.rp, x, y)
-        if result == 0xFFFFFFFF {
-            return -1
+        WaitBlit()
+        var result: u32 = ReadPixel(self.rp, x, y)
+        var bitmap = unsafe { (*self.rp).BitMap }
+        // ReadPixel is unreliable for layered, deep RastPorts on some classic
+        // graphics.library builds. ReadPixelLine8 is the documented path for
+        // those RastPorts and returns an explicit byte instead of a stale D0.
+        unsafe {
+            let layer = (*self.rp).Layer
+            if layer {
+                if x < 0 || y < 0 { return -1 }
+                if !bitmap { return -1 }
+                let temporary_bitmap = AllocBitMap(16, 1, (*bitmap).Depth, BMF_CLEAR, bitmap)
+                if !temporary_bitmap { return -1 }
+                var temporary_rp: RastPort = @zeroed(RastPort)
+                var pixels: [u8; 16] = @zeroed([u8; 16])
+                InitRastPort(&var temporary_rp)
+                temporary_rp.BitMap = temporary_bitmap
+                SetRast(&var temporary_rp, 0)
+                WaitBlit()
+                let count = ReadPixelLine8(self.rp, (u16)x, (u16)y, 1, &var pixels[0], &var temporary_rp)
+                WaitBlit()
+                result = (u32)pixels[0]
+                FreeBitMap(temporary_bitmap)
+                if count != 1 { return -1 }
+            }
         }
+        if result == 0xFFFFFFFF { return -1 }
+        if !bitmap { return (i32)(result & 255) }
 
         // graphics.library only guarantees the active bitplanes in D0; some
         // implementations leave the upper bits unchanged.
-        let bitmap = unsafe { (*self.rp).BitMap }
-        if !bitmap {
-            return -1
-        }
         let depth: u32 = (u32)unsafe { (*bitmap).Depth }
         if depth == 0 {
             return 0

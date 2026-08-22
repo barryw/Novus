@@ -1,10 +1,11 @@
 from std::core import Result
+from std::memory import Slice
 from std::test::test import expect, expect_true
-from amiga::sys::device::request import DeviceRequest
+from amiga::sys::device::request import DeviceError, DeviceRequest, DriverLoadError, device_is_resident, load_device_driver
 from amiga::sys::device::block import SystemBlockGeometry
 from amiga::sys::exec import MsgPortHandle
 from amiga::sys::timer::device import TimerHandle
-from amiga::raw::consts import TR_ADDREQUEST
+from amiga::raw::consts import CMD_CLEAR, TR_ADDREQUEST, UNIT_MICROHZ
 from amiga::raw::exec import AbortIO, CheckIO, CreateIORequest, DeleteIORequest, GetMsg, OpenDevice, CloseDevice, SendIO, WaitIO
 from amiga::raw::structs import IORequest, IOStdReq, timerequest, timeval
 
@@ -24,10 +25,24 @@ fn start_timer(timer: &TimerHandle, micros: u32) -> *IORequest {
 // @covers-ndk function|exec.library|CloseDevice
 // @covers-ndk function|exec.library|DeleteIORequest
 // @covers-ndk function|exec.library|DeleteMsgPort
+// @covers amiga::sys::device::request::DeviceError::message()
+// @covers amiga::sys::device::request::DeviceRequest::as_raw()
+// @covers amiga::sys::device::request::DeviceRequest::open(Str, u32, u32)
+// @covers amiga::sys::device::request::DeviceRequest::open_standard(Str, u32)
+// @covers amiga::sys::device::request::DeviceRequest::size()
+// @covers amiga::sys::device::request::DriverLoadError::message()
+// @covers amiga::sys::device::request::device_is_resident(Str)
+// @covers amiga::sys::device::request::load_device_driver(Str)
 // @ndk-side-effects CreateMsgPort reserves a reply-port signal; CreateIORequest allocates an IOStdReq tied to that port; OpenDevice installs non-null trackdisk device and unit pointers; Drop closes the device, deletes the request, and releases the port and signal
 @test("Exec device requests close and release their request and reply port")
 pub fn device_request_open_close() {
-    match DeviceRequest::open_block("trackdisk.device", 0) {
+    expect(DeviceRequest::open("trackdisk.device", 0, 1).is_err(), "undersized request is rejected")
+    expect(DeviceError::InvalidRequestSize.message() != null, "device errors have messages")
+    expect(DriverLoadError::LoadFailed.message() != null, "driver-load errors have messages")
+    expect(device_is_resident("trackdisk.device"), "trackdisk is resident")
+    expect(!device_is_resident("novus.missing.device"), "missing device is not resident")
+    expect(load_device_driver("RAM:novus-missing.device").is_err(), "missing driver file fails cleanly")
+    match DeviceRequest::open_standard("trackdisk.device", 0) {
         Result::Ok(request) => {
             let raw = request.as_raw()
             expect_true(raw != null, "trackdisk request allocated")
@@ -42,6 +57,14 @@ pub fn device_request_open_close() {
 }
 
 // @covers-ndk function|exec.library|DoIO
+// @covers amiga::sys::device::block::DeviceRequest::read_at(u32, MutSlice<u8>)
+// @covers amiga::sys::device::block::DeviceRequest::write_at(u32, Slice<u8>)
+// @covers amiga::sys::device::block::SystemBlockGeometry::blocks_per_track()
+// @covers amiga::sys::device::block::SystemBlockGeometry::cylinders()
+// @covers amiga::sys::device::block::SystemBlockGeometry::heads()
+// @covers amiga::sys::device::block::SystemBlockGeometry::total_blocks()
+// @covers amiga::sys::device::request::DeviceRequest::command(u16)
+// @covers amiga::sys::device::request::DeviceRequest::command_actual(u16)
 // @ndk-side-effects DoIO submits TD_GETGEOMETRY synchronously, waits for completion, removes any reply, and fills the caller-owned DriveGeometry without retaining its address
 @test("trackdisk geometry command leaves no device allocation behind")
 pub fn device_request_geometry() {
@@ -56,12 +79,40 @@ pub fn device_request_geometry() {
                     expect_true(dimensions_match, "trackdisk unit 0 reports 80x2x11 geometry with 512-byte sectors")
                     expect(geometry.total_blocks() == geometry.cylinders() * geometry.heads() * geometry.blocks_per_track(),
                         "reported geometry dimensions equal its total sector count")
+                    var sector: [u8] = [0; 512]
+                    match device.read_at(0, &var sector) {
+                        Result::Ok(bytes) => expect(bytes == 512, "inserted media returns a complete sector"),
+                        Result::Err(DeviceError::CommandFailed(_)) => {},
+                        Result::Err(_) => expect(false, "read uses a valid block request"),
+                    }
+                    let empty = Slice::<u8>::new(&sector[0], 0)
+                    expect(device.write_at(0, empty).unwrap() == 0, "empty write is a no-op")
+                    expect(device.command_actual((u16)CMD_CLEAR).is_ok(), "standard command returns io_Actual")
                 },
                 Result::Err(_) => expect(false, "geometry returned"),
             }
         },
         Result::Err(_) => expect(false, "trackdisk request opened"),
     }
+}
+
+// @covers amiga::sys::device::request::DeviceRequest::abort()
+// @covers amiga::sys::device::request::DeviceRequest::is_pending()
+// @covers amiga::sys::device::request::DeviceRequest::send(u16)
+// @covers amiga::sys::device::request::DeviceRequest::wait()
+@test("owned asynchronous device requests wait and abort exactly once")
+pub fn managed_async_device_request() {
+    var quick = DeviceRequest::open_standard("trackdisk.device", 0).unwrap()
+    expect(quick.wait().is_err() && quick.abort().is_err(), "idle request cannot wait or abort")
+    expect(quick.send((u16)CMD_CLEAR).is_ok(), "asynchronous command starts")
+    let _pending = quick.is_pending()
+    expect(quick.wait().is_ok() && !quick.is_pending(), "asynchronous command is collected")
+
+    var timer = DeviceRequest::open("timer.device", UNIT_MICROHZ, @sizeof(timerequest)).unwrap()
+    let raw = (*timerequest)timer.as_raw()
+    raw.tr_time = timeval { tv_secs: 5, tv_micro: 0 }
+    expect(timer.send((u16)TR_ADDREQUEST).is_ok() && timer.is_pending(), "timer request remains pending")
+    expect(timer.abort().is_ok() && !timer.is_pending(), "pending timer aborts and collects")
 }
 
 // @covers-ndk function|exec.library|CreateMsgPort

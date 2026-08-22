@@ -7,6 +7,7 @@ import argparse
 import base64
 import json
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -16,6 +17,12 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[2]
+SUITE_ASSETS = {
+    "tier12-ptplayer": (
+        ROOT / "Novus.Tests/Examples/beep.wav",
+        ROOT / "Novus.Tests/Examples/GSLINGER.MOD",
+    ),
+}
 FOUNDATION_SUITES = {
     "foundation-primitives": "Novus.Tests/AmigaRuntime/foundation_primitives.novus",
     "foundation-numeric-extended": "Novus.Tests/AmigaRuntime/foundation_numeric_extended.novus",
@@ -175,6 +182,38 @@ AMIGA_SUITES = {
     "filesystem-registry": "Novus.Tests/AmigaRuntime/filesystem_registry.novus",
     "interop-ownership": "Novus.Tests/AmigaRuntime/interop_ownership.novus",
     "library-capabilities": "Novus.Tests/AmigaRuntime/library_capabilities.novus",
+    "tier12-graphics-shapes": "Novus.Tests/AmigaRuntime/tier12_graphics_shapes.novus",
+    "tier12-hardware-helpers": "Novus.Tests/AmigaRuntime/tier12_hardware_helpers.novus",
+    "tier12-hardware-legacy": "Novus.Tests/AmigaRuntime/tier12_hardware_legacy.novus",
+    "tier12-core-values": "Novus.Tests/AmigaRuntime/tier12_core_values.novus",
+    "tier12-ui-controls": "ports/hdpart-novus/tests/a4000/ui_controls_test.novus",
+    "tier12-static-gadtools": "Novus.Tests/AmigaRuntime/tier12_static_gadtools.novus",
+    "tier12-dos-core": "Novus.Tests/AmigaRuntime/tier12_dos_core.novus",
+    "tier12-timers": "Novus.Tests/AmigaRuntime/tier12_timers.novus",
+    "tier12-timer-system-async": "Novus.Tests/AmigaRuntime/tier12_timer_system_async.novus",
+    "tier12-audio-application": "Novus.Tests/AmigaRuntime/tier12_audio_application.novus",
+    "tier12-storage-application": "Novus.Tests/AmigaRuntime/tier12_storage_application.novus",
+    "tier12-ui-remaining": "Novus.Tests/AmigaRuntime/tier12_ui_remaining.novus",
+    "tier12-hardware-audio": "Novus.Tests/AmigaRuntime/tier12_hardware_audio.novus",
+    "tier12-exec-core": "Novus.Tests/AmigaRuntime/tier12_exec_core.novus",
+    "tier12-mui": "Novus.Tests/AmigaRuntime/tier12_mui.novus",
+    "tier12-ptplayer": "Novus.Tests/AmigaRuntime/tier12_ptplayer.novus",
+    "tier12-gels": "Novus.Tests/AmigaRuntime/tier12_gels.novus",
+    "tier12-graphics-sprite": "Novus.Tests/AmigaRuntime/tier12_graphics_sprite.novus",
+    "tier12-intuition-owners": "Novus.Tests/AmigaRuntime/tier12_intuition_owners.novus",
+    "tier12-graphics-patterns": "Novus.Tests/AmigaRuntime/tier12_graphics_patterns.novus",
+    "tier12-audio-streaming": "Novus.Tests/AmigaRuntime/tier12_audio_streaming.novus",
+    "tier12-dos-file": "Novus.Tests/AmigaRuntime/tier12_dos_file.novus",
+    "tier12-resource-bank": "Novus.Tests/AmigaRuntime/tier12_resource_bank.novus",
+    "tier12-graphics-contexts": "Novus.Tests/AmigaRuntime/tier12_graphics_contexts.novus",
+    "tier12-exec-memory": "Novus.Tests/AmigaRuntime/tier12_exec_memory.novus",
+    "tier12-graphics-hardware": "Novus.Tests/AmigaRuntime/tier12_graphics_hardware.novus",
+    "tier12-exec-tasks": "Novus.Tests/AmigaRuntime/tier12_exec_tasks.novus",
+    "tier12-platform-helpers": "Novus.Tests/AmigaRuntime/tier12_platform_helpers.novus",
+    "tier12-reaction": "Novus.Tests/AmigaRuntime/tier12_reaction.novus",
+    "tier12-workbench-helpers": "Novus.Tests/AmigaRuntime/tier12_workbench_helpers.novus",
+    "tier12-intuition-remaining": "Novus.Tests/AmigaRuntime/tier12_intuition_remaining.novus",
+    "tier12-streamable": "Novus.Tests/AmigaRuntime/tier12_streamable.novus",
     "hdpart-core": "ports/hdpart-novus",
     "hdpart-device-scan": "ports/hdpart-novus/tests/a4000/device_scan_test.novus",
     "hdpart-driver-load": "ports/hdpart-novus/tests/a4000/driver_load_test.novus",
@@ -415,6 +454,9 @@ def build_suite(
 ) -> tuple[Path | None, dict[str, Any]]:
     optimize, safety, release = PROFILES[profile]
     output_dir = build_root / profile / suite
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for asset in SUITE_ASSETS.get(suite, ()):
+        shutil.copy2(asset, output_dir / asset.name)
     command = [
         "dotnet", str(compiler), "test", str(source),
         "-o", str(output_dir), "--cpu", "68020",
@@ -464,7 +506,10 @@ def diagnostic_summary(diagnostics: dict[str, Any]) -> str:
 def available_memory(machine: Machine) -> int | None:
     samples = []
     for _ in range(3):
-        result = guest_command(machine, "Avail FLUSH", required=False)
+        try:
+            result = guest_command(machine, "Avail FLUSH", required=False)
+        except Exception:
+            continue
         match = re.search(r"(?im)^total\s+(\d+)", result.get("output", ""))
         if match:
             samples.append(int(match.group(1)))

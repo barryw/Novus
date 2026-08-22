@@ -35,7 +35,10 @@ def _parse_args() -> tuple[argparse.Namespace, list[str]]:
     parser.add_argument(
         "--require-complete",
         action="store_true",
-        help="run verify_ndk_tests for each config and fail unless complete evidence is met",
+        help=(
+            "require complete runtime evidence for each config; with --compile-report, "
+            "require complete per-callable evidence"
+        ),
     )
     parser.add_argument(
         "--compile-report",
@@ -46,6 +49,11 @@ def _parse_args() -> tuple[argparse.Namespace, list[str]]:
             "optional compile evidence report; used when --require-complete is set "
             "to enforce full function evidence"
         ),
+    )
+    parser.add_argument(
+        "--evidence-dir",
+        type=Path,
+        help="directory for per-configuration evidence JSON (defaults beside amiga/raw)",
     )
     parser.add_argument(
         "--no-copy-reports",
@@ -95,9 +103,10 @@ def _require_complete(
     compile_reports: list[Path],
     config: str,
     strict: bool,
+    evidence_dir: Path | None = None,
 ) -> int:
     verify = Path(__file__).resolve().parents[2] / "tools" / "verify_ndk_tests.py"
-    output = raw_root.parent / "verify-ndk-dual" / f"runtime-{config.lower()}.json"
+    output = (evidence_dir or raw_root.parent / "verify-ndk-dual") / f"runtime-{config.lower()}.json"
     output.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         sys.executable,
@@ -109,14 +118,14 @@ def _require_complete(
         "--json",
         str(output),
     ]
-    if strict:
+    if strict and compile_reports:
         cmd.append("--require-complete")
     for report in runtime_reports:
         cmd.extend(["--runtime-report", str(report)])
     for report in compile_reports:
         cmd.extend(["--compile-report", str(report)])
     print("$", " ".join(shlex.quote(part) for part in cmd), flush=True)
-    status = _run(cmd, raw_root.parents[2])
+    status = _run(cmd, raw_root.parents[3])
     if status:
         return 1
     data = json.loads(output.read_text())
@@ -179,6 +188,7 @@ def main() -> int:
                 args.compile_report,
                 config,
                 args.require_complete,
+                args.evidence_dir,
             ):
                 return 1
 

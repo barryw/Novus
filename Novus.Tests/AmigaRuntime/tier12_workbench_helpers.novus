@@ -1,0 +1,149 @@
+from std::test::test import expect
+from amiga::raw::consts import SHARED_LOCK
+from amiga::raw::dos import Lock, UnLock
+from amiga::raw::exec import Wait
+from amiga::raw::structs import WBArg, WBStartup
+from amiga::sys::exec import spawn_task_fn
+from amiga::sys::workbench::args import ArgParser, ArgType, Args, ArgsError, WorkbenchStartup
+from amiga::sys::workbench::args import command_line, get_workbench_startup, is_workbench
+from amiga::sys::workbench::arexx import ARexxError, ARexxPort, ARexxResult
+from amiga::sys::workbench::arexx import arexx_call, arexx_send, has_arexx_port
+
+static var CLIENT_RESULT: i32 = 0
+
+fn result_client() -> i32 {
+    match arexx_call("NOVUS_TIER12", "PING") {
+        Result::Ok(result) => { CLIENT_RESULT = if result.as_str().equals("PONG") { 1 } else { -1 } },
+        Result::Err(_) => { CLIENT_RESULT = -2 }
+    }
+    return 0
+}
+
+fn error_client() -> i32 {
+    CLIENT_RESULT = if arexx_call("NOVUS_TIER12", "FAIL").is_err() { 2 } else { -3 }
+    return 0
+}
+
+fn send_client() -> i32 {
+    arexx_send("NOVUS_TIER12", "SEND")
+    CLIENT_RESULT = 3
+    return 0
+}
+
+// @covers amiga::sys::workbench::args::ArgParser::add(Str, ArgType)
+// @covers amiga::sys::workbench::args::ArgParser::new()
+// @covers amiga::sys::workbench::args::ArgParser::parse()
+// @covers amiga::sys::workbench::args::ArgParser::template()
+// @covers amiga::sys::workbench::args::Args::count()
+// @covers amiga::sys::workbench::args::Args::get_multi(Str)
+// @covers amiga::sys::workbench::args::Args::get_number(Str)
+// @covers amiga::sys::workbench::args::Args::get_str(Str)
+// @covers amiga::sys::workbench::args::Args::get_switch(Str)
+// @covers amiga::sys::workbench::args::Args::is_present(Str)
+// @covers amiga::sys::workbench::args::Args::parse(Str)
+// @covers amiga::sys::workbench::args::ArgsError::message()
+// @covers amiga::sys::workbench::args::command_line()
+@test("AmigaDOS argument builders parse empty optional command lines with typed access")
+pub fn cli_args_contract() {
+    expect(ArgsError::InvalidTemplate.message() != null, "argument errors have messages")
+    let args = Args::parse("FILE,COUNT/N,VERBOSE/S,FILES/M").unwrap()
+    expect(args.count() == 4, "template count is exact")
+    expect(args.get_str("FILE").is_none() && args.get_number("COUNT").is_none(), "absent scalar values are none")
+    expect(!args.get_switch("VERBOSE") && args.get_multi("FILES").is_none(), "absent switch and multi values are empty")
+    expect(!args.is_present("MISSING"), "unknown argument is absent")
+    var parser = ArgParser::new()
+    expect(parser.add("FILE", ArgType::Optional), "optional argument is added")
+    expect(parser.add("VERBOSE", ArgType::Switch), "switch argument is added")
+    expect(parser.template().equals("FILE,VERBOSE/S"), "builder emits exact DOS template")
+    expect(parser.parse().is_ok(), "builder parses the current empty command line")
+    let line = command_line()
+    expect(line.len() < 1024, "command-line view is bounded")
+}
+
+// @covers amiga::sys::workbench::args::WBArgument::full_path()
+// @covers amiga::sys::workbench::args::WBArgument::lock()
+// @covers amiga::sys::workbench::args::WBArgument::name()
+// @covers amiga::sys::workbench::args::WorkbenchStartup::arg(u32)
+// @covers amiga::sys::workbench::args::WorkbenchStartup::borrow(&WBStartup)
+// @covers amiga::sys::workbench::args::WorkbenchStartup::num_args()
+// @covers amiga::sys::workbench::args::WorkbenchStartup::tool_window()
+// @covers amiga::sys::workbench::args::get_workbench_startup()
+// @covers amiga::sys::workbench::args::is_workbench()
+@test("Workbench startup wrapper borrows launcher arguments and resolves full paths")
+pub fn workbench_startup_contract() {
+    let lock = Lock("RAM:", SHARED_LOCK)
+    expect(lock != 0, "RAM lock acquired")
+    var arguments = [
+        WBArg { wa_Lock: lock, wa_Name: (*i8)"NovusTool".as_ptr() },
+        WBArg { wa_Lock: lock, wa_Name: (*i8)"data.txt".as_ptr() },
+    ]
+    var message: WBStartup = @zeroed(WBStartup)
+    message.sm_NumArgs = 2
+    message.sm_ArgList = &var arguments[0]
+    message.sm_ToolWindow = (*i8)"CON:0/0/320/100/Novus".as_ptr()
+    let startup = WorkbenchStartup::borrow(&message)
+    expect(startup.num_args() == 2 && startup.arg(2).is_none(), "startup bounds arguments")
+    let argument = startup.arg(1).unwrap()
+    expect(argument.lock() == lock && argument.name().unwrap().equals("data.txt"), "argument preserves lock and name")
+    expect(argument.full_path().unwrap().as_str().ends_with("data.txt"), "full path combines lock and name")
+    expect(startup.tool_window().unwrap().starts_with("CON:"), "tool window is borrowed")
+    expect(!is_workbench() && get_workbench_startup().is_none(), "MCP test launch is correctly identified as CLI")
+    if lock != 0 { UnLock(lock) }
+}
+
+// @covers amiga::sys::workbench::arexx::ARexxCommand::command()
+// @covers amiga::sys::workbench::arexx::ARexxCommand::raw_msg()
+// @covers amiga::sys::workbench::arexx::ARexxError::message()
+// @covers amiga::sys::workbench::arexx::ARexxPort::as_ptr()
+// @covers amiga::sys::workbench::arexx::ARexxPort::create(Str)
+// @covers amiga::sys::workbench::arexx::ARexxPort::get_command()
+// @covers amiga::sys::workbench::arexx::ARexxPort::reply_error(&var ARexxCommand, i32, i32)
+// @covers amiga::sys::workbench::arexx::ARexxPort::reply_ok(&var ARexxCommand)
+// @covers amiga::sys::workbench::arexx::ARexxPort::reply_result(&var ARexxCommand, Str)
+// @covers amiga::sys::workbench::arexx::ARexxPort::signal_bit()
+// @covers amiga::sys::workbench::arexx::ARexxPort::wait_command()
+// @covers amiga::sys::workbench::arexx::ARexxResult::error_code()
+// @covers amiga::sys::workbench::arexx::ARexxResult::is_err()
+// @covers amiga::sys::workbench::arexx::ARexxResult::is_ok()
+// @covers amiga::sys::workbench::arexx::arexx_call(Str, Str)
+// @covers amiga::sys::workbench::arexx::arexx_send(Str, Str)
+// @covers amiga::sys::workbench::arexx::has_arexx_port(Str)
+@test("ARexx host and process clients exchange result, error, and no-result replies")
+pub fn arexx_contract() {
+    expect(ARexxError::PortNotFound.message() != null, "ARexx errors have messages")
+    expect(arexx_call("NOVUS_MISSING", "PING").is_err(), "missing target fails")
+    var port = ARexxPort::create("NOVUS_TIER12").unwrap()
+    expect(port.as_ptr() != null && port.signal_bit() != 0 && has_arexx_port("NOVUS_TIER12"), "public host port is live")
+    expect(ARexxPort::create("NOVUS_TIER12").is_err(), "duplicate port is rejected")
+    expect(port.get_command().is_none(), "empty host poll returns none")
+
+    CLIENT_RESULT = 0
+    var result_child = spawn_task_fn("Tier12 ARexx result", result_client, 8192).unwrap()
+    var result_command = port.wait_command()
+    expect(result_command.command().equals("PING") && result_command.raw_msg() != null, "host owns exact result command")
+    port.reply_result(&var result_command, "PONG")
+    expect(result_command.raw_msg() == null, "reply consumes command message")
+    result_child.wait()
+    expect(CLIENT_RESULT == 1, "client receives owned result string")
+
+    CLIENT_RESULT = 0
+    var error_child = spawn_task_fn("Tier12 ARexx error", error_client, 8192).unwrap()
+    Wait(port.signal_bit())
+    var error_command = port.get_command().unwrap()
+    port.reply_error(&var error_command, 10, 42)
+    error_child.wait()
+    expect(CLIENT_RESULT == 2, "client observes error reply")
+
+    CLIENT_RESULT = 0
+    var send_child = spawn_task_fn("Tier12 ARexx send", send_client, 8192).unwrap()
+    Wait(port.signal_bit())
+    var send_command = port.get_command().unwrap()
+    port.reply_ok(&var send_command)
+    send_child.wait()
+    expect(CLIENT_RESULT == 3, "fire-and-forget helper completes its exchange")
+
+    let ok = ARexxResult::Ok("ok")
+    let error = ARexxResult::Err(12)
+    expect(ok.is_ok() && !ok.is_err() && ok.error_code() == 0, "success result predicates agree")
+    expect(error.is_err() && !error.is_ok() && error.error_code() == 12, "error result preserves code")
+}

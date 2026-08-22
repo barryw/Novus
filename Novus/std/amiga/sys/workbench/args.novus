@@ -582,6 +582,11 @@ pub struct WorkbenchStartup {
 }
 
 impl WorkbenchStartup {
+    /// Borrow a startup message supplied by a launcher or test harness.
+    pub fn borrow(message: &WBStartup) -> WorkbenchStartup {
+        return WorkbenchStartup { msg: message }
+    }
+
     /// Get number of arguments (files/icons clicked)
     ///
     /// Index 0 is always the program's own icon.

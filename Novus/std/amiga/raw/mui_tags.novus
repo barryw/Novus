@@ -75,6 +75,7 @@ pub const MUII_Cycle: i32 = 17
 pub const MUII_PopUp: i32 = 18
 pub const MUII_PopFile: i32 = 19
 pub const MUII_PopDrawer: i32 = 20
+pub const MUII_PopFont: i32 = 42
 pub const MUII_PropKnob: i32 = 21
 pub const MUII_Drawer: i32 = 22
 pub const MUII_HardDisk: i32 = 23
@@ -627,5 +628,7 @@ pub const MUIA_Popasl_Active: u32 = $80421b37
 pub const MUIA_Popasl_StartHook: u32 = $8042b703
 pub const MUIA_Popasl_StopHook: u32 = $8042d8d2
 pub const MUIA_Popasl_Type: u32 = $8042df3d
+pub const MUIA_Popstring_Button: u32 = $8042d0b9
+pub const MUIA_Popstring_String: u32 = $804239ea
 
 // ASL requester types for PopAsl live in amiga::raw::consts.

@@ -4,6 +4,7 @@ from amiga::raw::consts import NP_Entry, NP_Name, NP_StackSize, TAG_DONE
 from amiga::raw::dos import CreateNewProc, CreateNewProcTagList, CreateNewProcTags, CreateProc, Delay, Exit
 from amiga::raw::exec import AllocSignal, FindTask, FreeSignal, SetSignal, Signal, Wait
 from amiga::raw::structs import MsgPort, Process, TagItem, Task
+from amiga::sys::dos import CreateProcess
 
 static var PARENT_TASK: *Task = null
 static var COMPLETION_MASK: u32 = 0
@@ -90,6 +91,24 @@ pub fn dos_create_new_proc() {
     let completed = await_child(bit, process != null, name)
     expect(process != null, "tag-list process is created")
     expect(completed, "child runs once, signals its parent, and tears down")
+}
+
+// @covers amiga::sys::dos::file::CreateProcess(*TagItem, u32)
+@test("high-level CreateProcess runs an NP_Entry child")
+pub fn high_level_create_process() {
+    let bit = prepare_signal()
+    let name: Str = "Novus High Proc"
+    var tags = process_tags(name)
+    var process: *Process = null
+    if bit >= 0 && PARENT_TASK != null {
+        match CreateProcess(&var tags[0], 3) {
+            Result::Ok(value) => { process = value },
+            Result::Err(_) => {},
+        }
+    }
+    let completed = await_child(bit, process != null, name)
+    expect(process != null, "high-level process is created")
+    expect(completed, "high-level child runs once and tears down")
 }
 
 // @covers-ndk function|dos.library|CreateNewProcTagList

@@ -1339,16 +1339,15 @@ impl MultiChannel {
         // Build allocation map based on requested mask
         // The allocation array is a list of acceptable channel combinations (bitmasks).
         // audio.device tries each entry in order until it finds available channels.
-        // ioa_Length = number of channels we WANT (not the array size!)
+        // ioa_Length is the number of acceptable channel-mask choices.
         var alloc_map: [u8] = [0, 0, 0, 0, 0, 0, 0, 0]
-        var num_channels: u32 = 0
+        var choice_count: u32 = 1
 
         let channel_count = mask.count()
 
         if channel_count == 4 {
             // All 4 channels - only one option
             alloc_map[0] = $0F
-            num_channels = 4
         } else if channel_count == 2 && mask.has_left() && mask.has_right() {
             // Stereo pair - provide multiple fallback combinations
             // Each entry is a bitmask of channels that satisfy "one left + one right"
@@ -1356,31 +1355,20 @@ impl MultiChannel {
             alloc_map[1] = $05  // channels 0+2 (left 0, right 2)
             alloc_map[2] = $0A  // channels 1+3 (right 1, left 3)
             alloc_map[3] = $0C  // channels 2+3 (right 2, left 3)
-            num_channels = 2
+            choice_count = 4
         } else if channel_count == 1 {
-            // Single channel
-            if mask.as_raw() == $0F {
-                // "Any" channel - let audio.device pick
-                alloc_map[0] = $01  // Try channel 0 first
-                alloc_map[1] = $02  // Then channel 1
-                alloc_map[2] = $04  // Then channel 2
-                alloc_map[3] = $08  // Then channel 3
-            } else {
-                // Specific channel requested
-                alloc_map[0] = mask.as_raw()
-            }
-            num_channels = 1
+            // Specific channel requested
+            alloc_map[0] = mask.as_raw()
         } else {
             // Custom multi-channel request - use mask directly
             alloc_map[0] = mask.as_raw()
-            num_channels = channel_count
         }
 
         // Set up the IOAudio for allocation
         io_audio.ioa_Request.io_Message.mn_ReplyPort = port
         io_audio.ioa_Request.io_Message.mn_Node.ln_Pri = priority
         io_audio.ioa_Data = &alloc_map[0]
-        io_audio.ioa_Length = num_channels  // Number of channels we want
+        io_audio.ioa_Length = choice_count
 
         // Open device - this performs the allocation
         unsafe {
@@ -1425,8 +1413,15 @@ impl MultiChannel {
     /// # Arguments
     /// * `priority` - Allocation priority (-128 to 127)
     pub fn acquire_any(priority: i8) -> Result<MultiChannel, AudioError> {
-        // Request any of the 4 channels - OS will pick one
-        return MultiChannel::acquire(ChannelMask::all(), priority)
+        var channel: u8 = 0
+        while channel < 4 {
+            match MultiChannel::acquire(ChannelMask::channel(channel), priority) {
+                Result::Ok(value) => return Result::Ok(value),
+                Result::Err(_) => {},
+            }
+            channel++
+        }
+        return Result::Err(AudioError::NoAllocation)
     }
 
     /// Acquire a stereo pair (one left + one right channel)

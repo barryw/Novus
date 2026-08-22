@@ -245,7 +245,7 @@ pub fn hz_from_period(period: u16, pal: bool) -> u32 {
 /// Given a base sample rate and desired frequency, calculate the period.
 ///
 /// # Arguments
-/// * `base_rate` - Sample rate the audio was recorded at (e.g., 8363 for MOD)
+/// * `base_rate` - C-4 sample rate the audio was recorded at (e.g., 8363 for MOD)
 /// * `target_hz` - Desired playback frequency in Hz
 /// * `pal` - True for PAL, false for NTSC
 ///
@@ -261,12 +261,14 @@ pub fn period_for_note(base_rate: u32, target_hz: u32, pal: bool) -> Option<u16>
         clock = PAULA_NTSC_CLOCK
     }
 
-    // period = (clock * base_rate) / (target_hz * base_rate)
-    //        = clock / target_hz when playing at target pitch
-    // But we need to account for the original sample rate
-    let period = (clock * base_rate) / (target_hz * base_rate / (u32)PERIOD_C4)
+    // Treat the sample's base rate as C-4 (approximately 262 Hz).
+    // Use wide intermediates because clock * 262 exceeds safe 32-bit products
+    // for many otherwise valid inputs.
+    let numerator: u64 = (u64)clock * 262
+    let denominator: u64 = (u64)base_rate * (u64)target_hz
+    let period: u64 = numerator / denominator
 
-    if period < (u32)PAULA_MIN_PERIOD || period > (u32)PAULA_MAX_PERIOD {
+    if period < (u64)PAULA_MIN_PERIOD || period > (u64)PAULA_MAX_PERIOD {
         return Option::None
     }
 
@@ -412,7 +414,7 @@ pub fn channel_dma_bit(channel: u8) -> u16 {
 /// # Returns
 /// Interrupt bit mask (INTF_AUD0, INTF_AUD1, INTF_AUD2, or INTF_AUD3)
 pub fn channel_int_bit(channel: u8) -> u16 {
-    return $0080 << (channel & 3)
+    return (u16)$0080 << (channel & 3)
 }
 
 // ============================================================================

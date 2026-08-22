@@ -1,8 +1,10 @@
 from std::core import Option, Result
 from amiga::sys::dos import BPtr, BPtrError
-from amiga::sys::dos import DeviceProcess, DosDeviceList
+from amiga::sys::dos import DeviceProcess, DosDeviceList, DosListError
 from std::string::core import FixedCString
 from std::test::test import expect
+
+static var BPTR_STORAGE: [u32] = [0x12345678, 0]
 
 pub enum ProbeError {
     Expected,
@@ -19,15 +21,46 @@ fn leave_locked_scope_on_error() -> Result<(), ProbeError> {
     return Result::Err(ProbeError::Expected)
 }
 
+// @covers amiga::sys::dos::bptr::BPtr::from_raw(i32)
+// @covers amiga::sys::dos::bptr::BPtr::from_raw_u32(u32)
+// @covers amiga::sys::dos::bptr::BPtr::is_null()
+// @covers amiga::sys::dos::bptr::BPtr::as_ptr()
+// @covers amiga::sys::dos::bptr::BPtr::as_raw()
+// @covers amiga::sys::dos::bptr::BPtr::borrow()
+// @covers amiga::sys::dos::bptr::BPtr::from_ptr(*T)
+// @covers amiga::sys::dos::bptr::BPtrError::message()
+// @covers amiga::sys::dos::list::DosListError::message()
+// @covers amiga::sys::dos::list::FileSystemStartup::device_name()
+// @covers amiga::sys::dos::list::FileSystemStartup::environment()
+// @covers amiga::sys::dos::list::FileSystemStartup::flags()
+// @covers amiga::sys::dos::list::FileSystemStartup::unit()
+// @covers amiga::sys::dos::list::DeviceProcess::resolve(CStr)
+// @covers amiga::sys::dos::list::DosDeviceEntry::is_handled_by(&DeviceProcess)
+// @covers amiga::sys::dos::list::DosDeviceEntry::name()
+// @covers amiga::sys::dos::list::DosDeviceEntry::startup()
+// @covers amiga::sys::dos::list::DosDeviceIter::next()
+// @covers amiga::sys::dos::list::DosDeviceList::iter()
+// @covers amiga::sys::dos::list::DosDeviceList::lock()
 @test("BPTR conversion and DOS device iteration are safe")
 pub fn dos_device_list() {
+    expect(DosListError::LockFailed.message() != null, "DOS-list errors have messages")
     match BPtr::<u8>::from_raw(0) {
         Result::Ok(value) => expect(value.is_null(), "zero BPTR is null"),
         Result::Err(_) => expect(false, "zero BPTR accepted"),
     }
     match BPtr::<u8>::from_raw_u32($40000000) {
-        Result::Err(BPtrError::OutOfRange) => {},
+        Result::Err(error) => expect(error.message() != null, "BPTR error has a message"),
         _ => expect(false, "overflowing BPTR rejected"),
+    }
+    let storage_ptr = (*u32)&var BPTR_STORAGE[0]
+    let typed = BPtr::<u32>::from_ptr(storage_ptr).unwrap()
+    expect(typed.as_raw() == ((u32)storage_ptr >> 2), "pointer encodes to exact BPTR")
+    unsafe {
+        expect(typed.as_ptr() == storage_ptr, "BPTR decodes to exact pointer")
+        match typed.borrow() {
+            Option::Some(value) => expect(*value == 0x12345678, "BPTR borrows live typed storage"),
+            Option::None => expect(false, "live BPTR is borrowable")
+        }
     }
 
     match leave_locked_scope_on_error() {
@@ -64,7 +97,15 @@ pub fn dos_device_list() {
                             Option::None => expect(false, "device has a name"),
                         }
                         if entry.is_handled_by(&boot_process) { boot_entry_found = true }
-                        let _startup = entry.startup()
+                        match entry.startup() {
+                            Option::Some(startup) => {
+                                expect(startup.device_name().is_some(), "startup exposes device name")
+                                expect(startup.environment().is_some(), "startup exposes DOS environment")
+                                let _unit = startup.unit()
+                                let _flags = startup.flags()
+                            },
+                            Option::None => {}
+                        }
                         count++
                     },
                     Option::None => { break },

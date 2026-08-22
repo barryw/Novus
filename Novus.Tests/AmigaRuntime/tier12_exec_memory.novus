@@ -1,0 +1,170 @@
+from std::test::test import expect
+from amiga::raw::consts import MEMF_ANY, MEMF_CLEAR
+from amiga::raw::exec import FreeMem, FreeVec
+from amiga::sys::exec::critical import CriticalSection, InterruptSection
+from amiga::sys::exec::errors import ExecError, exec_error_to_code
+from amiga::sys::exec::memory::allocation import MemHandle
+from amiga::sys::exec::memory::chip import ChipAsset, ChipBuffer, ChipCacheError, Priority
+from amiga::sys::exec::memory::chip import complete_dma_read, complete_dma_write, copy_to_chip, ensure_chip_ram, is_chip_ram
+from amiga::sys::exec::memory::chip import prepare_for_dma_read, prepare_for_dma_write
+from amiga::sys::exec::memory::chip_cache import ChipCache, cache_asset
+from amiga::sys::exec::memory::chip_pool import ChipPool, PoolSizeClass
+
+struct TestChipAsset {
+    ptr: *u8,
+    size: u32,
+}
+
+impl ChipAsset for TestChipAsset {
+    fn asset_id(&self) -> u32 { return 13001 }
+    fn data_ptr(&self) -> *u8 { return self.ptr }
+    fn data_size(&self) -> u32 { return self.size }
+    fn cache_priority(&self) -> Priority { return Priority::High }
+}
+
+// @covers amiga::sys::exec::memory::allocation::MemHandle::into_raw()
+// @covers amiga::sys::exec::memory::allocation::MemHandle::is_valid()
+// @covers amiga::sys::exec::memory::allocation::MemHandle::new_any(u32)
+// @covers amiga::sys::exec::memory::allocation::MemHandle::new_fast(u32)
+// @covers amiga::sys::exec::memory::allocation::MemHandle::new_with_flags(u32, u32)
+// @covers amiga::sys::exec::memory::allocation::MemHandle::ptr()
+// @covers amiga::sys::exec::memory::allocation::MemHandle::size()
+// @covers amiga::sys::exec::memory::chip::ChipAsset::asset_id()
+// @covers amiga::sys::exec::memory::chip::ChipAsset::cache_priority()
+// @covers amiga::sys::exec::memory::chip::ChipAsset::data_ptr()
+// @covers amiga::sys::exec::memory::chip::ChipAsset::data_size()
+@test("owned Exec memory and ChipAsset metadata preserve allocation contracts")
+pub fn owned_memory_contracts() {
+    expect(MemHandle::new_any(0).is_err(), "zero allocation is rejected")
+    let any = MemHandle::new_any(32).unwrap()
+    expect(any.is_valid() && any.ptr() != null && any.size() == 32, "any-memory allocation is valid")
+    expect(MemHandle::new_fast(16).is_ok(), "fast-memory allocation succeeds")
+    expect(MemHandle::new_with_flags(16, MEMF_ANY | MEMF_CLEAR).is_ok(), "flagged allocation succeeds")
+    let raw = MemHandle::new_any(24).unwrap().into_raw()
+    expect(raw != null, "ownership transfer returns allocation")
+    if raw != null { FreeVec(raw) }
+    let asset = TestChipAsset { ptr: any.ptr(), size: any.size() }
+    expect(asset.asset_id() == 13001 && asset.data_ptr() == any.ptr(), "asset identity and pointer are stable")
+    expect(asset.data_size() == 32 && matches!(asset.cache_priority(), Priority::High), "asset size and priority are stable")
+}
+
+// @covers amiga::sys::exec::memory::chip::ChipBuffer::alloc(u32)
+// @covers amiga::sys::exec::memory::chip::ChipBuffer::as_ptr()
+// @covers amiga::sys::exec::memory::chip::ChipBuffer::copy_from(*u8, u32)
+// @covers amiga::sys::exec::memory::chip::ChipBuffer::size()
+// @covers amiga::sys::exec::memory::chip::ChipCacheError::message()
+// @covers amiga::sys::exec::memory::chip::complete_dma_read(*u8, u32)
+// @covers amiga::sys::exec::memory::chip::complete_dma_write(*u8, u32)
+// @covers amiga::sys::exec::memory::chip::copy_to_chip(*u8, *u8, u32)
+// @covers amiga::sys::exec::memory::chip::ensure_chip_ram(*u8, u32, Priority)
+// @covers amiga::sys::exec::memory::chip::is_chip_ram(*u8)
+// @covers amiga::sys::exec::memory::chip::prepare_for_dma_read(*u8, u32)
+// @covers amiga::sys::exec::memory::chip::prepare_for_dma_write(*u8, u32)
+@test("chip buffers copy data and bracket both DMA directions")
+pub fn chip_buffer_contracts() {
+    expect(ChipBuffer::alloc(0).is_err(), "zero chip buffer is rejected")
+    var source: [u8] = [1, 2, 3, 4, 5, 6, 7, 8]
+    var chip = ChipBuffer::alloc(8).unwrap()
+    expect(chip.as_ptr() != null && chip.size() == 8 && is_chip_ram(chip.as_ptr()), "chip buffer is DMA-addressable")
+    expect(chip.copy_from((*u8)&var source, 8).is_ok() && unsafe { chip.as_ptr()[7] == 8 }, "chip buffer copies source bytes")
+    expect(chip.copy_from(null, 1).is_err() && chip.copy_from((*u8)&var source, 9).is_err(), "copy validates pointer and size")
+    copy_to_chip(chip.as_ptr(), (*u8)&var source, 8)
+    let read_dma = prepare_for_dma_read(chip.as_ptr(), 8)
+    expect(read_dma != null, "DMA read preparation returns an address")
+    complete_dma_read(chip.as_ptr(), 8)
+    let write_dma = prepare_for_dma_write(chip.as_ptr(), 8)
+    expect(write_dma != null, "DMA write preparation returns an address")
+    complete_dma_write(chip.as_ptr(), 8)
+    expect(prepare_for_dma_read(null, 0) == null && prepare_for_dma_write(null, 0) == null, "empty DMA regions are safe")
+    expect(ensure_chip_ram(null, 8, Priority::Low).is_err() && ensure_chip_ram((*u8)&var source, 0, Priority::Low).is_err(), "chip conversion validates inputs")
+    let fast = MemHandle::new_fast(8).unwrap()
+    let converted = ensure_chip_ram(fast.ptr(), 8, Priority::Normal).unwrap_or(null)
+    expect(converted != null && is_chip_ram(converted), "fast data converts to chip RAM")
+    if converted != null && converted != fast.ptr() { unsafe { FreeMem(converted, 8) } }
+    expect(ChipCacheError::InvalidSize.message() != null && ChipCacheError::AllAssetsPinned.message() != null, "chip errors have messages")
+}
+
+// @covers amiga::sys::exec::memory::chip_pool::ChipPool::block_size(PoolSizeClass)
+// @covers amiga::sys::exec::memory::chip_pool::ChipPool::free(*u8)
+// @covers amiga::sys::exec::memory::chip_pool::ChipPool::init()
+// @covers amiga::sys::exec::memory::chip_pool::ChipPool::shutdown()
+// @covers amiga::sys::exec::memory::chip_pool::ChipPool::size_class_for(u32)
+// @covers amiga::sys::exec::memory::chip_pool::ChipPool::stats()
+// @covers amiga::sys::exec::memory::chip_pool::PoolStats::total_bytes()
+// @covers amiga::sys::exec::memory::chip_pool::PoolStats::total_count()
+@test("chip pools classify, account, free, and shut down allocations")
+pub fn chip_pool_contracts() {
+    ChipPool::shutdown()
+    expect(ChipPool::size_class_for(0).is_none() && ChipPool::size_class_for(32769).is_none(), "out-of-range sizes are unpooled")
+    expect(matches!(ChipPool::size_class_for(1), Option::Some(PoolSizeClass::Small)), "small size is classified")
+    expect(ChipPool::block_size(PoolSizeClass::Small) == 4096 && ChipPool::block_size(PoolSizeClass::Huge) == 32768, "class block sizes are exact")
+    expect(ChipPool::init().is_ok(), "chip pools initialize")
+    let ptr = ChipPool::alloc(100).unwrap_or(null)
+    let used = ChipPool::stats()
+    expect(ptr != null && is_chip_ram(ptr), "pool allocation is chip RAM")
+    expect(used.total_count() == 1 && used.total_bytes() == 4096, "pool stats account rounded block")
+    expect(ChipPool::free(ptr).is_ok() && ChipPool::free(ptr).is_err(), "pool frees owned pointer once")
+    let empty = ChipPool::stats()
+    expect(empty.total_count() == 0 && empty.total_bytes() == 0, "pool stats clear after free")
+    ChipPool::shutdown()
+}
+
+// @covers amiga::sys::exec::memory::chip_cache::ChipCache::clear_unpinned()
+// @covers amiga::sys::exec::memory::chip_cache::ChipCache::evict(u32)
+// @covers amiga::sys::exec::memory::chip_cache::ChipCache::get(u32, *u8, u32, Priority, Str)
+// @covers amiga::sys::exec::memory::chip_cache::ChipCache::init()
+// @covers amiga::sys::exec::memory::chip_cache::ChipCache::is_pinned(u32)
+// @covers amiga::sys::exec::memory::chip_cache::ChipCache::pin(u32)
+// @covers amiga::sys::exec::memory::chip_cache::ChipCache::pin_count(u32)
+// @covers amiga::sys::exec::memory::chip_cache::ChipCache::shutdown()
+// @covers amiga::sys::exec::memory::chip_cache::ChipCache::stats()
+// @covers amiga::sys::exec::memory::chip_cache::ChipCache::tick()
+// @covers amiga::sys::exec::memory::chip_cache::ChipCache::unpin(u32)
+// @covers amiga::sys::exec::memory::chip_cache::cache_asset(u32, *u8, u32, Priority, Str)
+@test("chip cache records hits, pins, eviction, and cleanup")
+pub fn chip_cache_contracts() {
+    ChipCache::shutdown()
+    ChipCache::init()
+    let source = MemHandle::new_fast(64).unwrap()
+    let first = ChipCache::get(13101, source.ptr(), 32, Priority::Low, "first").unwrap_or(null)
+    let hit = ChipCache::get(13101, source.ptr(), 32, Priority::Low, "first").unwrap_or(null)
+    expect(first != null && first == hit && is_chip_ram(first), "cache returns stable chip pointer")
+    ChipCache::pin(13101)
+    expect(ChipCache::is_pinned(13101) && ChipCache::pin_count(13101) == 1, "cache pin persists")
+    expect(!ChipCache::evict(13101), "pinned asset cannot be evicted")
+    ChipCache::tick()
+    expect(cache_asset(13102, source.ptr() + 32, 32, Priority::High, "second").is_ok(), "asset helper caches data")
+    let stats = ChipCache::stats()
+    expect(stats.entries == 2 && stats.pinned_entries == 1 && stats.cache_hits >= 1, "cache stats report entries, pins, and hits")
+    ChipCache::unpin(13101)
+    expect(!ChipCache::is_pinned(13101) && ChipCache::evict(13101), "unpinned asset can be evicted")
+    ChipCache::clear_unpinned()
+    expect(ChipCache::stats().entries == 0, "clear removes remaining unpinned assets")
+    ChipCache::shutdown()
+}
+
+// @covers amiga::sys::exec::critical::CriticalSection::enter()
+// @covers amiga::sys::exec::critical::CriticalSection::is_forbidden()
+// @covers amiga::sys::exec::critical::InterruptSection::enter()
+// @covers amiga::sys::exec::critical::InterruptSection::is_disabled()
+// @covers amiga::sys::exec::errors::ExecError::message()
+// @covers amiga::sys::exec::errors::exec_error_to_code(ExecError)
+@test("Exec critical guards restore scheduler and interrupt state")
+pub fn exec_guard_contracts() {
+    expect(!CriticalSection::is_forbidden(), "scheduler starts enabled")
+    var saw_forbidden = false
+    {
+        let _guard = CriticalSection::enter()
+        saw_forbidden = CriticalSection::is_forbidden()
+    }
+    expect(saw_forbidden && !CriticalSection::is_forbidden(), "critical guard forbids then restores scheduling")
+    expect(!InterruptSection::is_disabled(), "interrupts start enabled")
+    var saw_disabled = false
+    {
+        let _guard = InterruptSection::enter()
+        saw_disabled = InterruptSection::is_disabled()
+    }
+    expect(saw_disabled && !InterruptSection::is_disabled(), "interrupt guard disables then restores interrupts")
+    expect(exec_error_to_code(ExecError::NoMem) == -100 && exec_error_to_code(ExecError::AlignmentError) == -110, "Exec error codes are stable")
+    expect(ExecError::InvalidAddress.message() != null, "Exec errors have messages")
+}

@@ -27,6 +27,14 @@ fn write_sample() -> bool {
 // @covers-ndk function|dos.library|IoErr
 // @ndk-side-effects Open creates and later reopens one RAM file; Write persists all 27 requested bytes; Seek measures the exact extent and restores position; Read returns those bytes unchanged; Close runs at each lexical scope exit before DeleteFile removes the fixture; the final failed Open is classified through IoErr
 // @covers std::string::core::String::truncate(usize)
+// @covers amiga::dos::File::create(Str)
+// @covers amiga::dos::File::write_text(Str)
+// @covers amiga::dos::File::write_line(Str)
+// @covers amiga::dos::File::write_lines(Slice<Str>)
+// @covers amiga::dos::File::open(Str)
+// @covers amiga::dos::File::len()
+// @covers amiga::dos::File::read_text()
+// @covers amiga::dos::File::read_lines()
 @test("DOS text helpers round-trip complete strings and lines")
 pub fn dos_text_helpers_roundtrip() {
     let _ = delete_file(test_path())

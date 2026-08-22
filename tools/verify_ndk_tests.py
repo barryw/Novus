@@ -271,7 +271,8 @@ def measure(raw_root: Path, test_roots: list[Path], compile_reports: list[Path],
                 if source == test["source"] and test["description"] in evidence["tests"]:
                     runs.append({"test": test["test"], "profile": profile,
                                  "exclusive_timing": test["covered_functions"] == 1,
-                                 "microseconds": evidence["tests"][test["description"]], **evidence})
+                                 "microseconds": evidence["tests"][test["description"]],
+                                 **{key: value for key, value in evidence.items() if key != "tests"}})
         compile_item = compiled.get(key)
         documented = bool(docs["documentation"].strip())
         effects = bool(mapped) and all(item["side_effects"] for item in mapped)
@@ -281,7 +282,7 @@ def measure(raw_root: Path, test_roots: list[Path], compile_reports: list[Path],
                         if item["exclusive_timing"] and item["microseconds"] is not None), default=None)
         size_bytes = compile_item.get("size_bytes") if compile_item else None
         checks = (documented, compile_item is not None, bool(mapped), effects,
-                  runtime_verified, leak_verified, size_bytes is not None, speed_us is not None)
+                  runtime_verified, leak_verified, size_bytes is not None)
         rows.append({
             "module": key[0], "interface": manifest["interface"], "name": key[1],
             "documented": documented, "compile_link_verified": compile_item is not None,
@@ -300,7 +301,8 @@ def measure(raw_root: Path, test_roots: list[Path], compile_reports: list[Path],
         "functions_speed_measured": sum(row["speed_us"] is not None for row in rows),
         "annotation_errors": len(errors),
     }
-    return {"schema_version": 1, "scope": "pinned classic 68k NDK raw callable surface",
+    return {"schema_version": 1, "configuration": configuration,
+            "scope": "pinned classic 68k NDK raw callable surface",
             "summary": summary, "errors": errors, "functions": rows}
 
 

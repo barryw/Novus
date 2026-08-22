@@ -224,7 +224,7 @@ partition, so the assign was refused whenever that partition was attached: each 
 without `--hdf` and failed with it. This is why the previous handover recorded `ndk-dos-assigns`
 as fixed — it had been measured without the partition.
 
-Renamed to `NOVUSDEVPROC` and `NOVUSASSIGN`, each with a comment naming the collision. The
+Renamed to `NOVUSDEVPROC` and `NOVUSASGN`. The
 remaining `NOVUSNDK` references in `ndk_dos_filesystem_control.novus` are correct: that suite
 owns the label.
 

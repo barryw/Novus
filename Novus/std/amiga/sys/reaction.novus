@@ -1142,9 +1142,6 @@ impl ReActionWindow {
     /// Wait for and return the next event (blocking)
     pub fn wait_event(&self) -> ReActionEvent {
         unsafe {
-            // Wait for signals
-            Wait(self.sig_mask)
-
             // Handle input - use array so we can get a pointer
             var code: [u16] = [0]
             let code_ptr = (*u16)&code[0]
@@ -1154,7 +1151,8 @@ impl ReActionWindow {
                 let result = DoMethodA(self.window_obj, &handle_msg[0])
 
                 if result == WMHI_LASTMSG {
-                    // No more messages, wait again
+                    // Drain queued messages before waiting: one signal may cover
+                    // several window-class messages.
                     Wait(self.sig_mask)
                     continue
                 }

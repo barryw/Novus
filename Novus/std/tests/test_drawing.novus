@@ -12,6 +12,11 @@ from amiga::sys::graphics::errors import GraphicsError, graphics_error_to_code
 // DrawContext Creation Tests
 // ============================================================================
 
+// @covers amiga::sys::intuition::window::WindowHandle::simple(Str, i16, i16)
+// @covers amiga::sys::intuition::window::WindowHandle::as_raw()
+// @covers amiga::sys::intuition::window::WindowHandle::rastport()
+// @covers amiga::sys::graphics::draw::DrawContext::from_window(&Window)
+// @covers amiga::sys::graphics::draw::DrawContext::as_raw()
 @test("DrawContext::from_window creates context from window")
 pub fn test_draw_context_from_window() {
     let win_result = WindowHandle::simple("Draw Test", 200, 150)
@@ -34,6 +39,7 @@ pub fn test_draw_context_from_window() {
     }
 }
 
+// @covers amiga::sys::graphics::draw::DrawContext::borrow_raw(*RastPort)
 @test("DrawContext::from_rastport rejects null pointer")
 pub fn test_draw_context_null_rastport() {
     let ctx_result = unsafe { DrawContext::borrow_raw((*RastPort)0) }
@@ -50,6 +56,9 @@ pub fn test_draw_context_null_rastport() {
 // @covers-ndk function|graphics.library|SetAPen
 // @covers-ndk function|graphics.library|GetAPen
 // @ndk-side-effects SetAPen replaces the RastPort foreground pen twice and GetAPen returns each exact live value
+// @covers amiga::sys::graphics::draw::DrawContext::from_rastport(&RastPort)
+// @covers amiga::sys::graphics::draw::DrawContext::pen(u8)
+// @covers amiga::sys::graphics::draw::DrawContext::pen_color()
 @test("DrawContext::pen and get_pen work correctly")
 pub fn test_draw_pen_get_set() {
     let win_result = WindowHandle::simple("Pen Test", 200, 150)
@@ -79,6 +88,8 @@ pub fn test_draw_pen_get_set() {
 // @covers-ndk function|graphics.library|SetBPen
 // @covers-ndk function|graphics.library|GetBPen
 // @ndk-side-effects SetBPen replaces the RastPort background pen and GetBPen returns the exact live value
+// @covers amiga::sys::graphics::draw::DrawContext::bg_pen(u8)
+// @covers amiga::sys::graphics::draw::DrawContext::bg_pen_color()
 @test("DrawContext::bg_pen and get_bg_pen work correctly")
 pub fn test_draw_bg_pen_get_set() {
     let win_result = WindowHandle::simple("BG Pen Test", 200, 150)
@@ -102,6 +113,9 @@ pub fn test_draw_bg_pen_get_set() {
 // @covers-ndk function|graphics.library|SetDrMd
 // @covers-ndk function|graphics.library|GetDrMd
 // @ndk-side-effects SetDrMd installs JAM2 in the RastPort and GetDrMd returns that exact mode
+// @covers amiga::sys::graphics::draw::DrawContext::mode(DrawMode)
+// @covers amiga::sys::graphics::draw::DrawContext::draw_mode()
+// @covers amiga::sys::graphics::draw::DrawMode::to_raw()
 @test("DrawContext::mode and get_mode work correctly")
 pub fn test_draw_mode_get_set() {
     let win_result = WindowHandle::simple("Mode Test", 200, 150)
@@ -130,6 +144,11 @@ pub fn test_draw_mode_get_set() {
 // @covers-ndk function|graphics.library|WritePixel
 // @covers-ndk function|graphics.library|ReadPixel
 // @ndk-side-effects SetRast clears the screen bitmap; SetAPen selects color 1; WritePixel changes exactly the requested coordinate; ReadPixel observes that pixel and an untouched neighbor
+// @covers amiga::sys::intuition::screen::ScreenHandle::lores(Str, i16)
+// @covers amiga::sys::intuition::screen::ScreenHandle::rastport()
+// @covers amiga::sys::graphics::draw::DrawContext::clear(u8)
+// @covers amiga::sys::graphics::draw::DrawContext::pixel(i16, i16)
+// @covers amiga::sys::graphics::draw::DrawContext::get_pixel(i16, i16)
 @test("DrawContext::pixel writes and can be read back")
 pub fn test_draw_pixel_readback() {
     let win_result = ScreenHandle::lores("Drawing Test", 2)
@@ -161,6 +180,8 @@ pub fn test_draw_pixel_readback() {
     }
 }
 
+// @covers amiga::sys::graphics::draw::DrawContext::pixel_at(&Point)
+// @covers amiga::sys::graphics::draw::DrawContext::get_pixel_at(&Point)
 @test("DrawContext::pixel_at works with Point")
 pub fn test_draw_pixel_at() {
     let win_result = ScreenHandle::lores("Drawing Test", 2)
@@ -194,6 +215,7 @@ pub fn test_draw_pixel_at() {
 // @covers-ndk function|graphics.library|Draw
 // @covers-ndk function|graphics.library|ReadPixel
 // @ndk-side-effects Move positions the RastPort cursor; Draw writes both endpoints and an interior horizontal pixel while leaving the adjacent row unchanged; ReadPixel verifies all four locations
+// @covers amiga::sys::graphics::draw::DrawContext::line(i16, i16, i16, i16)
 @test("DrawContext::line draws a horizontal line")
 pub fn test_draw_line_horizontal() {
     let win_result = ScreenHandle::lores("Drawing Test", 2)
@@ -258,6 +280,7 @@ pub fn test_draw_line_vertical() {
 // @covers-ndk function|graphics.library|RectFill
 // @covers-ndk function|graphics.library|ReadPixel
 // @ndk-side-effects RectFill writes the inclusive corners and interior of the requested rectangle while preserving pixels immediately outside both horizontal edges
+// @covers amiga::sys::graphics::draw::DrawContext::rect_fill(&Rect)
 @test("DrawContext::rect_fill fills a rectangle")
 pub fn test_draw_rect_fill() {
     let win_result = ScreenHandle::lores("Drawing Test", 2)
@@ -294,6 +317,7 @@ pub fn test_draw_rect_fill() {
     }
 }
 
+// @covers amiga::sys::graphics::draw::DrawContext::fill_rect(i16, i16, i16, i16)
 @test("DrawContext::fill_rect works with coordinates")
 pub fn test_draw_fill_rect() {
     let win_result = ScreenHandle::lores("Drawing Test", 2)
@@ -357,6 +381,7 @@ pub fn test_draw_clear() {
 // @covers-ndk function|graphics.library|EraseRect
 // @covers-ndk function|graphics.library|ReadPixel
 // @ndk-side-effects EraseRect applies the live background pen inside the requested region while preserving a pixel outside it
+// @covers amiga::sys::graphics::draw::DrawContext::rect_erase(&Rect)
 @test("DrawContext::rect_erase erases a region")
 pub fn test_draw_rect_erase() {
     let win_result = ScreenHandle::lores("Drawing Test", 2)
@@ -395,6 +420,8 @@ pub fn test_draw_rect_erase() {
 // @covers-ndk function|graphics.library|Draw
 // @covers-ndk function|graphics.library|ReadPixel
 // @ndk-side-effects Move selects the line origin; Draw writes through the requested endpoint; ReadPixel observes the start, middle, and end
+// @covers amiga::sys::graphics::draw::DrawContext::move_to(i16, i16)
+// @covers amiga::sys::graphics::draw::DrawContext::line_to(i16, i16)
 @test("DrawContext::move_to and line_to work together")
 pub fn test_draw_move_line_to() {
     let win_result = ScreenHandle::lores("Drawing Test", 2)

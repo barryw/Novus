@@ -1,0 +1,90 @@
+from std::core import Option
+from std::test::test import expect
+from amiga::sys::device::audio_streaming import AudioStreamer
+from amiga::sys::hardware::audio import ChannelMask
+
+#[stack_size(32768)]
+static var STREAM_DATA: [u8] = [0; 12288]
+
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::buffer_addr(u8)
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::buffer_byte(u8, u32)
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::channel()
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::channel2()
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::channels()
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::channels_raw()
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::get_frames_elapsed()
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::is_playing()
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::is_stereo()
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::left_mask()
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::play(bool)
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::position()
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::progress()
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::right_mask()
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::sample_rate()
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::set_volume(u16)
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::stop()
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::tick()
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::total_size()
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::with_options(*u8, u32, u16, u32, Option<u8>, u32)
+@test("streaming audio plays, reports state, and aborts DMA safely")
+pub fn streaming_lifecycle() {
+    var streamer = match AudioStreamer::with_options(&var STREAM_DATA[0], 12288, 322, 11025, Option::Some(0), 4096) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "mono streamer allocates")
+            return
+        },
+    }
+    expect(streamer.channel() == 0 && streamer.channel2() == 0, "requested mono channel is retained")
+    expect(streamer.channels().count() == 1 && streamer.channels_raw() == 1, "mono mask is reported")
+    expect(streamer.left_mask() == 1 && streamer.right_mask() == 0 && !streamer.is_stereo(), "mono topology is reported")
+    expect(streamer.total_size() == 12288 && streamer.sample_rate() == 11025, "source metadata is reported")
+    expect(streamer.buffer_addr(0) != 0 && streamer.buffer_byte(0, 0) == 0, "chip buffer is readable")
+    expect(streamer.set_volume(65).is_err() && streamer.set_volume(32).is_ok(), "volume is validated")
+    expect(streamer.play(false).is_ok() && streamer.is_playing(), "triple-buffer playback starts")
+    expect(streamer.tick().is_ok() && streamer.get_frames_elapsed() == 1, "tick advances time")
+    expect(streamer.position() > 0 && streamer.progress() <= 100, "position and progress advance")
+    streamer.stop()
+    expect(!streamer.is_playing(), "stop aborts all queued DMA")
+}
+
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::new(*u8, u32, u16, u32)
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::new_on_channel(u8, *u8, u32, u16, u32)
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::new_stereo(*u8, u32, u16, u32)
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::new_stereo_with_buffer(*u8, u32, u16, u32, u32)
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::new_with_buffer(*u8, u32, u16, u32, u32)
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::new_with_channels(ChannelMask, *u8, u32, u16, u32)
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::with_channels_options(ChannelMask, *u8, u32, u16, u32, u32)
+// @covers amiga::sys::device::audio_streaming::AudioStreamer::with_stereo_options(*u8, u32, u16, u32, u32)
+@test("all streaming constructors validate and allocate requested topology")
+pub fn streaming_constructors() {
+    expect(AudioStreamer::new(null, 2, 322, 11025).is_err(), "null source is rejected")
+    expect(AudioStreamer::new_on_channel(4, &var STREAM_DATA[0], 2, 322, 11025).is_err(), "invalid channel is rejected")
+    {
+        expect(AudioStreamer::new(&var STREAM_DATA[0], 2, 322, 11025).is_ok(), "default mono allocates")
+    }
+    {
+        expect(AudioStreamer::new_with_buffer(&var STREAM_DATA[0], 2, 322, 11025, 4096).is_ok(), "buffered mono allocates")
+    }
+    {
+        expect(AudioStreamer::new_on_channel(0, &var STREAM_DATA[0], 2, 322, 11025).is_ok(), "specific mono allocates")
+    }
+    {
+        expect(AudioStreamer::new_with_channels(ChannelMask::channel(0), &var STREAM_DATA[0], 2, 322, 11025).is_ok(), "masked mono allocates")
+    }
+    {
+        expect(AudioStreamer::with_channels_options(ChannelMask::channel(0), &var STREAM_DATA[0], 2, 322, 11025, 4096).is_ok(), "masked options allocate")
+    }
+    {
+        match AudioStreamer::new_stereo(&var STREAM_DATA[0], 2, 322, 11025) {
+            Result::Ok(streamer) => expect(streamer.is_stereo() && streamer.right_mask() != 0, "default stereo allocates both sides"),
+            Result::Err(_) => expect(false, "default stereo allocates"),
+        }
+    }
+    {
+        expect(AudioStreamer::new_stereo_with_buffer(&var STREAM_DATA[0], 2, 322, 11025, 4096).is_ok(), "buffered stereo allocates")
+    }
+    {
+        expect(AudioStreamer::with_stereo_options(&var STREAM_DATA[0], 2, 322, 11025, 4096).is_ok(), "stereo options allocate")
+    }
+}

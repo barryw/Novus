@@ -1,6 +1,6 @@
 from std::core import Result
 from std::test::test import expect, expect_true, expect_eq
-from amiga::sys::device::audio import AudioDeviceHandle
+from amiga::sys::device::audio import AudioDeviceHandle, ChannelPreference
 from amiga::sys::hardware::audio import SampleHandle
 from amiga::sys::hardware::paula import period_from_hz, hz_from_period
 from amiga::sys::exec::memory::chip import is_chip_ram
@@ -9,6 +9,12 @@ from amiga::sys::exec::memory::chip import is_chip_ram
 // @covers-ndk function|exec.library|CopyMem
 // @covers-ndk function|exec.library|FreeVec
 // @ndk-side-effects AllocVec reserves cleared DMA-visible chip memory; CopyMem preserves all 16 source bytes; SampleHandle retains the exact length, word count, and rate metadata; Drop returns the allocation once with FreeVec
+// @covers amiga::sys::hardware::audio::SampleHandle::from_data_with_rate(*u8, u32, u32)
+// @covers amiga::sys::hardware::audio::SampleHandle::ptr()
+// @covers amiga::sys::hardware::audio::SampleHandle::bytes()
+// @covers amiga::sys::hardware::audio::SampleHandle::words()
+// @covers amiga::sys::hardware::audio::SampleHandle::sample_rate()
+// @covers amiga::sys::hardware::audio::SampleHandle::period_pal()
 @test("Paula sample metadata and chip allocation are consistent")
 pub fn audio_sample_lifecycle() {
     var pcm: [u8] = [0, 16, 32, 16, 0, 240, 224, 240, 0, 16, 32, 16, 0, 240, 224, 240]
@@ -37,6 +43,19 @@ pub fn audio_sample_lifecycle() {
 // @covers-ndk function|exec.library|DeleteIORequest
 // @covers-ndk function|exec.library|DeleteMsgPort
 // @ndk-side-effects OpenDevice asks audio.device to allocate one real Paula channel; Novus rejects invalid period and volume values before I/O; DoIO completes one nonzero sample write; Drop sends ADCMD_FREE, closes the device, deletes its IOAudio request, and releases the reply port and signal
+// @covers amiga::sys::hardware::audio::SampleHandle::from_data(*u8, u32)
+// @covers amiga::sys::device::audio::AudioDeviceHandle::open_any(i8)
+// @covers amiga::sys::device::audio::AudioDeviceHandle::channels()
+// @covers amiga::sys::device::audio::AudioDeviceHandle::channel_count()
+// @covers amiga::sys::device::audio::AudioDeviceHandle::has_channel(u8)
+// @covers amiga::sys::device::audio::AudioDeviceHandle::alloc_key()
+// @covers amiga::sys::device::audio::AudioDeviceHandle::play(&SampleHandle, u16, u16, u16)
+// @covers amiga::sys::device::audio::AudioDeviceHandle::set_period_volume(u16, u16)
+// @covers amiga::sys::device::audio::AudioDeviceHandle::stop()
+// @covers amiga::sys::device::audio::AudioDeviceHandle::start()
+// @covers amiga::sys::device::audio::AudioDeviceHandle::open(ChannelPreference, i8)
+// @covers amiga::sys::device::audio::AudioDeviceHandle::open_channel(u8, i8)
+// @covers amiga::sys::device::audio::AudioDeviceHandle::open_stereo(i8)
 @test("audio.device plays a sample and releases its channel")
 pub fn audio_device_lifecycle() {
     var pcm: [u8] = [0, 16, 32, 16, 0, 240, 224, 240, 0, 16, 32, 16, 0, 240, 224, 240]
@@ -55,11 +74,32 @@ pub fn audio_device_lifecycle() {
             expect(device.channel_count() == 1, "open_any allocated exactly one channel")
             expect(device.has_channel(0) || device.has_channel(1) || device.has_channel(2) || device.has_channel(3),
                 "allocated channel is discoverable")
+            let allocation_key = device.alloc_key()
             expect(device.play(&sample, 123, 1, 1).is_err(), "unsafe playback period rejected before I/O")
             expect(device.play(&sample, 322, 65, 1).is_err(), "unsafe playback volume rejected before I/O")
             expect(device.play(&sample, 322, 1, 1).is_ok(), "nonzero sample playback completed")
+            expect(device.set_period_volume(322, 1).is_ok(), "period and volume update completes")
+            expect(device.stop().is_ok(), "playback stops")
+            expect(device.start().is_ok(), "playback resumes")
+            expect(device.alloc_key() == allocation_key, "allocation key remains stable")
         },
         Result::Err(_) => expect(false, "audio.device opened"),
+    }
+    {
+        match AudioDeviceHandle::open(ChannelPreference::Left, 0) {
+            Result::Ok(value) => expect(value.channel_count() == 1, "preferred channel opens"),
+            Result::Err(_) => expect(false, "preferred channel opens"),
+        }
+    }
+    {
+        match AudioDeviceHandle::open_channel(0, 0) {
+            Result::Ok(value) => expect(value.channel_count() == 1, "specific channel opens"),
+            Result::Err(_) => expect(false, "specific channel opens"),
+        }
+    }
+    match AudioDeviceHandle::open_stereo(0) {
+        Result::Ok(value) => expect(value.channel_count() == 2, "stereo channels open"),
+        Result::Err(_) => expect(false, "stereo channels open"),
     }
 }
 

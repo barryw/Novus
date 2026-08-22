@@ -85,6 +85,17 @@ def safe_name(module: str) -> str:
     return module.removeprefix("amiga::raw::").replace("::", "_")
 
 
+def shard_modules(modules: dict[str, list[dict]], count: int) -> list[dict[str, list[dict]]]:
+    """Distribute whole modules by callable count for balanced parallel probes."""
+    shards: list[dict[str, list[dict]]] = [{} for _ in range(count)]
+    totals = [0] * count
+    for module, functions in sorted(modules.items(), key=lambda item: (-len(item[1]), item[0])):
+        index = min(range(count), key=lambda candidate: (totals[candidate], candidate))
+        shards[index][module] = functions
+        totals[index] += len(functions)
+    return shards
+
+
 def compile_source(source: Path, binary: Path, args: argparse.Namespace) -> dict:
     command = ["dotnet", str(args.compiler), "compile", str(source), "-o", str(binary),
                "--release", "--no-cache"]
@@ -192,8 +203,7 @@ def main() -> int:
     if args.shard_index is not None or args.shard_count is not None:
         if args.shard_index is None or args.shard_count is None or not 0 <= args.shard_index < args.shard_count:
             parser.error("--shard-index and --shard-count must define a valid zero-based shard")
-        modules = {module: functions for index, (module, functions) in enumerate(modules.items())
-                   if index % args.shard_count == args.shard_index}
+        modules = shard_modules(modules, args.shard_count)[args.shard_index]
 
     args.output.mkdir(parents=True, exist_ok=True)
     results = []

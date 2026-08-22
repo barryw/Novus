@@ -1,0 +1,164 @@
+from std::test::test import expect
+from amiga::raw::consts import IECLASS_RAWKEY, IND_WRITEEVENT
+from amiga::raw::exec import CloseDevice, CreateIORequest, CreateMsgPort, DeleteIORequest, DeleteMsgPort, DoIO, OpenDevice
+from amiga::raw::graphics import WaitTOF
+from amiga::raw::intuition import SizeWindow
+from amiga::raw::structs import InputEvent, IORequest, IOStdReq
+from amiga::sys::exec::thread import run_thread_loop, spawn_thread, ThreadHandle
+from amiga::sys::intuition import WindowEvent, WindowHandle
+from amiga::sys::intuition::buffered_window import BufferedWindow
+from amiga::sys::intuition::dialog import alert, alert_on, alert_with_button, choice, choice_on
+from amiga::sys::intuition::dialog import confirm, confirm_on, confirm_with_buttons, retry_dialog, save_dialog, RetryChoice
+
+const DIALOG_CONTROL_WORK: u32 = 1 << 17
+static var DIALOG_RETURNED: bool = false
+static var ESCAPE_WRITTEN: bool = false
+
+@suppress("W0002", "The pinned input command and raw-key class fit their exact ABI fields")
+fn inject_escape() -> bool {
+    let port = CreateMsgPort()
+    if port == null { return false }
+    let request = CreateIORequest(port, @sizeof(IOStdReq))
+    if request == null {
+        DeleteMsgPort(port)
+        return false
+    }
+    let opened = unsafe { OpenDevice("input.device", 0, (*IORequest)request, 0) } == 0
+    var event: InputEvent = @zeroed(InputEvent)
+    event.ie_Class = (u8)IECLASS_RAWKEY
+    event.ie_Code = $45
+    let io = (*IOStdReq)request
+    io.io_Command = (u16)IND_WRITEEVENT
+    io.io_Length = @sizeof(InputEvent)
+    io.io_Data = (*u8)&var event
+    let down = opened && unsafe { DoIO((*IORequest)request) } == 0
+    event.ie_Code = $C5
+    let up = down && unsafe { DoIO((*IORequest)request) } == 0
+    if opened { unsafe { CloseDevice((*IORequest)request) } }
+    DeleteIORequest(request)
+    DeleteMsgPort(port)
+    return down && up
+}
+
+fn dialog_control_tick(_state: *u8) -> bool {
+    for var frame: u32 = 0; frame < 20; frame++ { WaitTOF() }
+    for var attempt: u32 = 0; attempt < 100 && !DIALOG_RETURNED; attempt++ {
+        ESCAPE_WRITTEN = inject_escape() || ESCAPE_WRITTEN
+        for var frame: u32 = 0; frame < 5; frame++ { WaitTOF() }
+    }
+    return false
+}
+
+fn dialog_controller() -> i32 {
+    return run_thread_loop(DIALOG_CONTROL_WORK, null, dialog_control_tick)
+}
+
+fn begin_dialog() -> ThreadHandle {
+    DIALOG_RETURNED = false
+    var controller = spawn_thread("Tier12 dialog closer", dialog_controller, 8192).unwrap()
+    controller.signal(DIALOG_CONTROL_WORK)
+    return controller
+}
+
+fn end_dialog(controller: &var ThreadHandle) {
+    DIALOG_RETURNED = true
+    controller.wait()
+}
+
+// @covers amiga::sys::intuition::buffered_window::BufferedWindow::buffer_rastport()
+// @covers amiga::sys::intuition::buffered_window::BufferedWindow::buffer_size()
+// @covers amiga::sys::intuition::buffered_window::BufferedWindow::clear(u8)
+// @covers amiga::sys::intuition::buffered_window::BufferedWindow::draw_context()
+// @covers amiga::sys::intuition::buffered_window::BufferedWindow::new(Str, i16, i16)
+// @covers amiga::sys::intuition::buffered_window::BufferedWindow::poll_event()
+// @covers amiga::sys::intuition::buffered_window::BufferedWindow::present()
+// @covers amiga::sys::intuition::buffered_window::BufferedWindow::wait_event()
+// @covers amiga::sys::intuition::buffered_window::BufferedWindow::window_handle()
+@test("buffered windows draw, present, and resize their live off-screen bitmap")
+pub fn buffered_window_contract() {
+    var window = BufferedWindow::new("Tier12 buffered", 180, 100).unwrap()
+    expect(window.window_handle().as_raw() != null && window.buffer_rastport() != null, "window and off-screen rastport are live")
+    let (initial_width, initial_height) = window.buffer_size()
+    expect(initial_width == 180 && initial_height == 100, "buffer starts at the requested size")
+    window.clear(0)
+    {
+        let context = window.draw_context().unwrap()
+        context.pen(1)
+        context.line(2, 2, 40, 20)
+    }
+    expect(window.present().is_ok(), "off-screen drawing blits to the visible window")
+    let _pending = window.poll_event()
+    unsafe { SizeWindow(window.window_handle().as_raw(), 12, 8) }
+    var resized = false
+    while !resized {
+        match window.wait_event() {
+            WindowEvent::Resize(width, height) => {
+                let (buffer_width, buffer_height) = window.buffer_size()
+                resized = buffer_width == width && buffer_height == height && width > 180 && height > 100
+            },
+            _ => {},
+        }
+    }
+    expect(resized && window.present().is_ok(), "resize events replace and present a matching buffer")
+}
+
+// @covers amiga::sys::intuition::dialog::alert(*u8, *u8)
+// @covers amiga::sys::intuition::dialog::alert_on(*Window, *u8, *u8)
+// @covers amiga::sys::intuition::dialog::alert_with_button(*u8, *u8, *u8)
+// @covers amiga::sys::intuition::dialog::choice(*u8, *u8, *u8)
+// @covers amiga::sys::intuition::dialog::choice_on(*Window, *u8, *u8, *u8)
+// @covers amiga::sys::intuition::dialog::confirm(*u8, *u8)
+// @covers amiga::sys::intuition::dialog::confirm_on(*Window, *u8, *u8)
+// @covers amiga::sys::intuition::dialog::confirm_with_buttons(*u8, *u8, *u8)
+// @covers amiga::sys::intuition::dialog::retry_dialog(*u8, *u8)
+// @covers amiga::sys::intuition::dialog::save_dialog(*u8, *u8)
+@test("system dialogs execute their real modal loops and honor Escape cancellation")
+pub fn dialog_contract() {
+    let parent = WindowHandle::simple("Tier12 dialog parent", 220, 80).unwrap()
+    ESCAPE_WRITTEN = false
+
+    var control = begin_dialog()
+    alert("Tier12", "Alert")
+    end_dialog(&var control)
+
+    control = begin_dialog()
+    alert_with_button("Tier12", "Alert", "Dismiss")
+    end_dialog(&var control)
+
+    control = begin_dialog()
+    alert_on(parent.as_raw(), "Tier12", "Parent alert")
+    end_dialog(&var control)
+
+    control = begin_dialog()
+    let confirmed = confirm("Tier12", "Confirm?")
+    end_dialog(&var control)
+
+    control = begin_dialog()
+    let custom_confirmed = confirm_with_buttons("Tier12", "Confirm?", "Proceed|Cancel")
+    end_dialog(&var control)
+
+    control = begin_dialog()
+    let parent_confirmed = confirm_on(parent.as_raw(), "Tier12", "Confirm?")
+    end_dialog(&var control)
+
+    control = begin_dialog()
+    let selected = choice("Tier12", "Choose", "One|Two|Cancel")
+    end_dialog(&var control)
+
+    control = begin_dialog()
+    let parent_selected = choice_on(parent.as_raw(), "Tier12", "Choose", "One|Cancel")
+    end_dialog(&var control)
+
+    control = begin_dialog()
+    let save = save_dialog("Tier12", "Save?")
+    end_dialog(&var control)
+
+    control = begin_dialog()
+    let retry = retry_dialog("Tier12", "Retry?")
+    end_dialog(&var control)
+
+    expect(ESCAPE_WRITTEN, "input.device delivered requester input")
+    expect(!confirmed && !custom_confirmed && !parent_confirmed, "confirmation dialogs return cancellation")
+    expect(selected == 0 && parent_selected == 0 && save == 0, "choice dialogs return their documented cancel value")
+    expect(matches!(retry, RetryChoice::Abort), "retry dialog maps cancellation to Abort")
+}

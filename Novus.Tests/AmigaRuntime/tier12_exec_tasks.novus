@@ -1,0 +1,204 @@
+from std::core import Option
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::consts import SIGBREAKF_CTRL_C, SIGBREAKF_CTRL_D, SIGBREAKF_CTRL_E
+from amiga::raw::dos import Delay, Input, Output
+from amiga::raw::exec import AllocSignal, FindTask, FreeSignal, Signal, Wait
+from amiga::raw::structs import Process, Task
+from amiga::sys::exec import ProcessBuilder, ProcessHandle, TaskRunner
+from amiga::sys::exec import break_signal_mask, clear_break_signals, receive_startup_data
+from amiga::sys::exec import run_signal_loop, run_timer_loop, should_exit, spawn_task_fn, spawn_task_fn_with_ptr
+from amiga::sys::exec::thread import ThreadHandle, clear_thread_break_signals, run_thread_loop
+from amiga::sys::exec::thread import spawn_thread, thread_break_signal_mask, thread_should_exit
+from amiga::sys::timer::device import Duration
+
+static var BUILDER_PARENT: *Task = null
+static var BUILDER_SIGNAL: u32 = 0
+static var TICKED: u32 = 0
+
+fn builder_worker() -> i32 {
+    Signal(BUILDER_PARENT, BUILDER_SIGNAL)
+    return 23
+}
+
+fn return_seven() -> i32 { return 7 }
+
+fn pointer_worker() -> i32 {
+    match receive_startup_data() {
+        Option::Some(ptr) => {
+            let value = (*u32)ptr
+            *value = 0x12345678
+            return 5
+        },
+        Option::None => return 99
+    }
+}
+
+fn stop_tick(_state: *u8) -> bool {
+    TICKED++
+    return false
+}
+
+fn signal_worker() -> i32 {
+    return run_signal_loop(SIGBREAKF_CTRL_E, null, stop_tick)
+}
+
+fn timer_worker() -> i32 {
+    return run_timer_loop(Duration::millis(1), null, stop_tick)
+}
+
+fn thread_worker() -> i32 {
+    return run_thread_loop(SIGBREAKF_CTRL_E, null, stop_tick)
+}
+
+struct RunnerProbe {
+    ticks: u32,
+    cleaned: bool,
+}
+
+impl TaskRunner for RunnerProbe {
+    fn tick(&var self) -> bool {
+        self.ticks++
+        return false
+    }
+    fn interval(&self) -> Option<Duration> { return Option::Some(Duration::millis(2)) }
+    fn signals(&self) -> u32 { return SIGBREAKF_CTRL_E }
+    fn cleanup(&var self) { self.cleaned = true }
+}
+
+// @covers amiga::sys::exec::process::ProcessBuilder::new()
+// @covers amiga::sys::exec::process::ProcessBuilder::set_cli(bool)
+// @covers amiga::sys::exec::process::ProcessBuilder::set_close_error(bool)
+// @covers amiga::sys::exec::process::ProcessBuilder::set_close_input(bool)
+// @covers amiga::sys::exec::process::ProcessBuilder::set_close_output(bool)
+// @covers amiga::sys::exec::process::ProcessBuilder::set_console(*u8)
+// @covers amiga::sys::exec::process::ProcessBuilder::set_copy_vars(bool)
+// @covers amiga::sys::exec::process::ProcessBuilder::set_current_dir(i32)
+// @covers amiga::sys::exec::process::ProcessBuilder::set_entry(*u8)
+// @covers amiga::sys::exec::process::ProcessBuilder::set_error(i32)
+// @covers amiga::sys::exec::process::ProcessBuilder::set_home_dir(i32)
+// @covers amiga::sys::exec::process::ProcessBuilder::set_input(i32)
+// @covers amiga::sys::exec::process::ProcessBuilder::set_name(Str)
+// @covers amiga::sys::exec::process::ProcessBuilder::set_notify_on_death(bool)
+// @covers amiga::sys::exec::process::ProcessBuilder::set_output(i32)
+// @covers amiga::sys::exec::process::ProcessBuilder::set_priority(i8)
+// @covers amiga::sys::exec::process::ProcessBuilder::set_stack_size(u32)
+// @covers amiga::sys::exec::process::ProcessBuilder::set_synchronous(bool)
+// @covers amiga::sys::exec::process::ProcessBuilder::set_window(*u8)
+// @covers amiga::sys::exec::process::ProcessBuilder::spawn()
+@test("ProcessBuilder validates its entry and launches a configured DOS process")
+pub fn process_builder_contract() {
+    expect(ProcessBuilder::new().spawn().is_err(), "missing entry is rejected")
+    let signal = AllocSignal(-1)
+    expect(signal >= 0, "completion signal allocated")
+    if signal < 0 { return }
+    BUILDER_PARENT = FindTask(null)
+    BUILDER_SIGNAL = (u32)1 << (u32)signal
+    let entry: fn() -> i32 = builder_worker
+    let process_name: Str = "Tier12 builder"
+    var builder = ProcessBuilder::new()
+    builder.set_name(process_name)
+    builder.set_stack_size(8192)
+    builder.set_priority(0)
+    builder.set_input(Input()).set_output(Output()).set_error(0)
+    builder.set_close_input(false).set_close_output(false).set_close_error(false)
+    builder.set_current_dir(0).set_home_dir(0).set_copy_vars(false).set_cli(false)
+    builder.set_window(null).set_console(null)
+    builder.set_notify_on_death(false).set_synchronous(false)
+    builder.set_entry((*u8)*(*u32)&entry)
+    let process = builder.spawn().unwrap_or((*Process)null)
+    expect(process != null, "configured process is created")
+    Wait(BUILDER_SIGNAL)
+    while FindTask(process_name.as_cstr()) == (*Task)process { Delay(1) }
+    FreeSignal(signal)
+}
+
+// @covers amiga::sys::exec::task::ProcessHandle::as_raw()
+// @covers amiga::sys::exec::task::ProcessHandle::break_ctrl_c()
+// @covers amiga::sys::exec::task::ProcessHandle::break_ctrl_d()
+// @covers amiga::sys::exec::task::ProcessHandle::is_running()
+// @covers amiga::sys::exec::task::ProcessHandle::signal(u32)
+// @covers amiga::sys::exec::task::ProcessHandle::wait()
+// @covers amiga::sys::exec::task::spawn_task_fn(Str, fn() -> i32, u32)
+// @covers amiga::sys::exec::task::spawn_task_fn_with_ptr(Str, fn() -> i32, *u8, u32)
+// @covers amiga::sys::exec::task::receive_startup_data()
+@test("managed DOS processes report completion, return codes, data, and breaks")
+pub fn managed_process_contract() {
+    expect(spawn_task_fn("bad stack", return_seven, 0).is_err(), "zero stack is rejected")
+    var immediate = spawn_task_fn("Tier12 immediate", return_seven, 8192).unwrap()
+    expect(immediate.as_raw() != null, "raw process is available while owned")
+    expect(immediate.wait() == 7 && !immediate.is_running(), "wait returns the child code and completes the handle")
+    expect(!immediate.signal(SIGBREAKF_CTRL_E), "completed process rejects signals")
+
+    var value: u32 = 0
+    var with_ptr = spawn_task_fn_with_ptr("Tier12 data", pointer_worker, (*u8)&var value, 8192).unwrap()
+    expect(with_ptr.wait() == 5 && value == 0x12345678, "startup pointer and return code round-trip")
+
+    var ctrl_c = spawn_task_fn("Tier12 ctrl-c", signal_worker, 8192).unwrap()
+    expect(ctrl_c.break_ctrl_c() && ctrl_c.wait() == 0, "CTRL-C terminates signal loop")
+    var ctrl_d = spawn_task_fn("Tier12 ctrl-d", signal_worker, 8192).unwrap()
+    expect(ctrl_d.break_ctrl_d() && ctrl_d.wait() == 0, "CTRL-D terminates signal loop")
+}
+
+// @covers amiga::sys::exec::task::TaskRunner::cleanup()
+// @covers amiga::sys::exec::task::TaskRunner::interval()
+// @covers amiga::sys::exec::task::TaskRunner::signals()
+// @covers amiga::sys::exec::task::TaskRunner::tick()
+// @covers amiga::sys::exec::task::break_signal_mask()
+// @covers amiga::sys::exec::task::clear_break_signals()
+// @covers amiga::sys::exec::task::run_signal_loop(u32, *u8, fn(*u8) -> bool)
+// @covers amiga::sys::exec::task::run_timer_loop(Duration, *u8, fn(*u8) -> bool)
+// @covers amiga::sys::exec::task::should_exit()
+@test("task runner and loop helpers obey timer, signal, and break contracts")
+pub fn task_loop_contract() {
+    var probe = RunnerProbe { ticks: 0, cleaned: false }
+    expect(!probe.tick() && probe.ticks == 1, "runner tick dispatches")
+    expect(probe.interval().is_some() && probe.signals() == SIGBREAKF_CTRL_E, "runner scheduling metadata dispatches")
+    probe.cleanup()
+    expect(probe.cleaned, "runner cleanup dispatches")
+    expect(break_signal_mask() == (SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D), "process break mask is exact")
+    Signal(FindTask(null), SIGBREAKF_CTRL_C)
+    expect(should_exit(), "current process observes break")
+    clear_break_signals()
+    expect(!should_exit(), "break clear restores state")
+    TICKED = 0
+    var signal_loop = spawn_task_fn("Tier12 signal loop", signal_worker, 8192).unwrap()
+    expect(signal_loop.signal(SIGBREAKF_CTRL_E) && signal_loop.wait() == 0 && TICKED == 1, "signal loop ticks once")
+    TICKED = 0
+    var timer_loop = spawn_task_fn("Tier12 timer loop", timer_worker, 8192).unwrap()
+    expect(timer_loop.wait() == 0 && TICKED == 1, "timer loop ticks once")
+}
+
+// @covers amiga::sys::exec::thread::ThreadHandle::as_raw()
+// @covers amiga::sys::exec::thread::ThreadHandle::break_ctrl_c()
+// @covers amiga::sys::exec::thread::ThreadHandle::break_ctrl_d()
+// @covers amiga::sys::exec::thread::ThreadHandle::cleanup()
+// @covers amiga::sys::exec::thread::ThreadHandle::is_running()
+// @covers amiga::sys::exec::thread::ThreadHandle::signal(u32)
+// @covers amiga::sys::exec::thread::ThreadHandle::wait()
+// @covers amiga::sys::exec::thread::clear_thread_break_signals()
+// @covers amiga::sys::exec::thread::run_thread_loop(u32, *u8, fn(*u8) -> bool)
+// @covers amiga::sys::exec::thread::spawn_thread(Str, fn() -> i32, u32)
+// @covers amiga::sys::exec::thread::thread_break_signal_mask()
+// @covers amiga::sys::exec::thread::thread_should_exit()
+@test("Exec threads signal, break, wait, and release owned resources")
+pub fn thread_contract() {
+    expect(thread_break_signal_mask() == (SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D), "thread break mask is exact")
+    Signal(FindTask(null), SIGBREAKF_CTRL_C)
+    expect(thread_should_exit(), "thread helper observes current break")
+    clear_thread_break_signals()
+    expect(!thread_should_exit(), "thread helper clears break")
+
+    TICKED = 0
+    var signaled = spawn_thread("Tier12 thread", thread_worker, 8192).unwrap()
+    expect(signaled.is_running() && signaled.as_raw() != null, "thread exposes a live task")
+    expect(signaled.signal(SIGBREAKF_CTRL_E), "thread accepts custom signal")
+    expect(signaled.wait() == 0 && !signaled.is_running() && TICKED == 1, "thread runs once and joins")
+
+    var ctrl_c = spawn_thread("Tier12 thread C", thread_worker, 8192).unwrap()
+    expect(ctrl_c.break_ctrl_c() && ctrl_c.wait() == 0, "thread handles CTRL-C")
+    var ctrl_d = spawn_thread("Tier12 thread D", thread_worker, 8192).unwrap()
+    expect(ctrl_d.break_ctrl_d(), "thread handles CTRL-D")
+    ctrl_d.cleanup()
+    expect(!ctrl_d.is_running(), "cleanup joins and releases thread")
+}

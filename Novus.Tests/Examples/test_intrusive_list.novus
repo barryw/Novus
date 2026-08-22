@@ -27,10 +27,33 @@ fn new_test_item(val: u32) -> TestItem {
 // Basic Creation Tests
 // ============================================================================
 
+// This suite exercises every IntrusiveList operation below; keep the callable
+// map together so one hardware report supplies the complete generic instance.
+// @covers amiga::sys::exec::intrusive_list::IntrusiveList::add_head(*T)
+// @covers amiga::sys::exec::intrusive_list::IntrusiveList::add_tail(*T)
+// @covers amiga::sys::exec::intrusive_list::IntrusiveList::as_min_list()
+// @covers amiga::sys::exec::intrusive_list::IntrusiveList::first()
+// @covers amiga::sys::exec::intrusive_list::IntrusiveList::init()
+// @covers amiga::sys::exec::intrusive_list::IntrusiveList::insert_after(*T, *T)
+// @covers amiga::sys::exec::intrusive_list::IntrusiveList::insert_before(*T, *T)
+// @covers amiga::sys::exec::intrusive_list::IntrusiveList::is_empty()
+// @covers amiga::sys::exec::intrusive_list::IntrusiveList::last()
+// @covers amiga::sys::exec::intrusive_list::IntrusiveList::len()
+// @covers amiga::sys::exec::intrusive_list::IntrusiveList::new()
+// @covers amiga::sys::exec::intrusive_list::IntrusiveList::next(*T)
+// @covers amiga::sys::exec::intrusive_list::IntrusiveList::prev(*T)
+// @covers amiga::sys::exec::intrusive_list::IntrusiveList::remove(*T)
+// @covers amiga::sys::exec::intrusive_list::IntrusiveList::remove_head()
+// @covers amiga::sys::exec::intrusive_list::IntrusiveList::remove_tail()
+// @covers amiga::sys::exec::intrusive_list::init_min_node(*MinNode)
 @test("New list should be empty")
 pub fn test_new_list_is_empty() {
     var list = IntrusiveList::<TestItem>::new()
     list.init()
+    var item = new_test_item(1)
+    init_min_node(&var item.node)
+    expect_true(item.node.mln_Succ == null && item.node.mln_Pred == null, "node initializer clears links")
+    expect_true(list.as_min_list() != null, "list exposes its MinList")
     expect_true(list.is_empty(), "new list should be empty")
 }
 

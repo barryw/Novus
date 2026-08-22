@@ -291,12 +291,18 @@ pub fn invert_line_pattern(pattern: u16) -> u16 {
 /// Shift a line pattern left by n bits (rotate).
 pub fn rotate_line_pattern_left(pattern: u16, n: u8) -> u16 {
     let shift: u8 = n & 15  // Modulo 16
+    if shift == 0 {
+        return pattern
+    }
     return (pattern << shift) | (pattern >> (16 - shift))
 }
 
 /// Shift a line pattern right by n bits (rotate).
 pub fn rotate_line_pattern_right(pattern: u16, n: u8) -> u16 {
     let shift: u8 = n & 15  // Modulo 16
+    if shift == 0 {
+        return pattern
+    }
     return (pattern >> shift) | (pattern << (16 - shift))
 }
 
@@ -308,6 +314,12 @@ pub fn rotate_line_pattern_right(pattern: u16, n: u8) -> u16 {
 /// Use this when you need pattern data in chip RAM (required for some operations).
 /// Returns an error if allocation fails.
 pub fn allocate_pattern(depth: u32, width: u32, height: u32) -> Result<MemHandle, ExecError> {
+    if depth == 0 || width == 0 || height == 0 {
+        return MemHandle::new_chip(0)
+    }
+    if width > $FFFFFFFF / depth || height > $FFFFFFFF / (width * depth) {
+        return MemHandle::new_chip(0)
+    }
     let size: u32 = width * height * depth
     return MemHandle::new_chip(size)
 }

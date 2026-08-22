@@ -1,5 +1,7 @@
 // MUI (Magic User Interface) Builder API
 // Namespace: amiga::sys::mui
+// Library: muimaster.library
+// Base: _MUIMasterBase
 //
 // High-level builder API for MUI GUI applications (AmigaOS 2.0+ with MUI installed).
 // MUI is a BOOPSI-based toolkit providing automatic layout, font sensitivity,
@@ -34,8 +36,13 @@ from amiga::raw::mui_tags import *
 // ============================================================================
 // These are the core MUI library functions we need
 
+@library("muimaster.library")
 extern fn MUI_NewObjectA(classname: *u8, tags: *TagItem) -> *u8
+@library("muimaster.library")
+extern fn MUI_MakeObjectA(object_type: i32, params: *u32) -> *u8
+@library("muimaster.library")
 extern fn MUI_DisposeObject(obj: *u8)
+@library("muimaster.library")
 extern fn MUI_RequestA(app: *u8, window: *u8, flags: u32, title: *u8, gadgets: *u8, format: *u8, params: *u32) -> i32
 
 // DoMethod is from amiga.lib, dispatches BOOPSI methods
@@ -272,6 +279,8 @@ impl MUIAppBuilder {
             var tags = TagBuilder::new()
 
             tags.add(MUIA_Application_Title, (u32)self.title)
+            tags.add(MUIA_Application_UseCommodities, 0)
+            tags.add(MUIA_Application_UseRexx, 0)
 
             if self.author {
                 tags.add(MUIA_Application_Author, (u32)self.author)
@@ -441,6 +450,8 @@ impl Drop for MUIAppBuilder {
                     j++
                 }
                 FreeVec((*u8)self.labels)
+                self.labels = null
+                self.label_count = 0
             }
         }
     }
@@ -631,6 +642,9 @@ impl MUIGroupBuilder {
     /// Add a child object
     @chain
     pub fn child(&var self, obj: *u8) {
+        if obj == null {
+            return self
+        }
         unsafe {
             if self.child_count >= self.child_capacity {
                 let new_capacity = self.child_capacity * 2
@@ -1154,6 +1168,8 @@ impl Drop for MUIApp {
                     i++
                 }
                 FreeVec((*u8)self.labels)
+                self.labels = null
+                self.label_count = 0
             }
         }
     }
@@ -1676,9 +1692,13 @@ impl MUITabsBuilder {
 
             let reg_obj = MUI_NewObjectA("Register.mui".ptr, tags.finish())
 
-            // Free our tracking arrays (objects are now owned by Register)
-            // Note: titles array is NOT freed - Register needs it to stay valid
-            // The strings themselves are tracked by app_builder
+            // Register retains the title pointer array, so keep it alive with
+            // the title strings already owned by the application builder.
+            if reg_obj != null {
+                (*self.app_builder).track_label((*u8)self.titles)
+                self.titles = null
+                self.title_count = 0
+            }
             FreeVec((*u8)self.pages)
             self.pages = null
             self.page_count = 0
@@ -1760,37 +1780,47 @@ pub fn on_radio(app: &MUIApp, radio: *u8, return_id: u32) {
 //
 // ============================================================================
 
+fn make_asl_popup(id: u32, request_type: u32, image_spec: i32) -> *u8 {
+    unsafe {
+        var string_tags = TagBuilder::new()
+        string_tags.add(MUIA_Frame, (u32)MUIV_Frame_String)
+        string_tags.add(MUIA_String_MaxLen, 256)
+        let string_object = MUI_NewObjectA("String.mui".ptr, string_tags.finish())
+        let button_params: [u32] = [(u32)image_spec]
+        let button_object = MUI_MakeObjectA(MUIO_PopButton, &button_params[0])
+        if string_object == null || button_object == null {
+            if string_object != null { MUI_DisposeObject(string_object) }
+            if button_object != null { MUI_DisposeObject(button_object) }
+            return null
+        }
+
+        var tags = TagBuilder::new()
+        tags.add(MUIA_Popasl_Type, request_type)
+        tags.add(MUIA_Popstring_String, (u32)string_object)
+        tags.add(MUIA_Popstring_Button, (u32)button_object)
+        tags.add(MUIA_UserData, id)
+        let popup = MUI_NewObjectA("Popasl.mui".ptr, tags.finish())
+        if popup == null {
+            MUI_DisposeObject(button_object)
+            MUI_DisposeObject(string_object)
+        }
+        return popup
+    }
+}
+
 /// Create a file requester popup
 pub fn make_file_popup(id: u32) -> *u8 {
-    unsafe {
-        var tags = TagBuilder::new()
-        tags.add(MUIA_Popasl_Type, ASL_FileRequest)
-        tags.add(MUIA_UserData, id)
-
-        return MUI_NewObjectA("Popasl.mui".ptr, tags.finish())
-    }
+    return make_asl_popup(id, ASL_FileRequest, MUII_PopFile)
 }
 
 /// Create a font requester popup
 pub fn make_font_popup(id: u32) -> *u8 {
-    unsafe {
-        var tags = TagBuilder::new()
-        tags.add(MUIA_Popasl_Type, ASL_FontRequest)
-        tags.add(MUIA_UserData, id)
-
-        return MUI_NewObjectA("Popasl.mui".ptr, tags.finish())
-    }
+    return make_asl_popup(id, ASL_FontRequest, MUII_PopFont)
 }
 
 /// Create a screenmode requester popup
 pub fn make_screenmode_popup(id: u32) -> *u8 {
-    unsafe {
-        var tags = TagBuilder::new()
-        tags.add(MUIA_Popasl_Type, ASL_ScreenModeRequest)
-        tags.add(MUIA_UserData, id)
-
-        return MUI_NewObjectA("Popasl.mui".ptr, tags.finish())
-    }
+    return make_asl_popup(id, ASL_ScreenModeRequest, MUII_PopUp)
 }
 
 // ============================================================================

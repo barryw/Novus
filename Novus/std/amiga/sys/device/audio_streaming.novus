@@ -40,7 +40,7 @@
 from std::core import Result, Option, Drop
 from amiga::raw::exec import CopyMem, CacheClearU
 from amiga::raw::exec import CreateMsgPort, DeleteMsgPort, CreateIORequest, DeleteIORequest
-from amiga::raw::exec import OpenDevice, CloseDevice, BeginIO, CheckIO, WaitIO, GetMsg
+from amiga::raw::exec import OpenDevice, CloseDevice, BeginIO, CheckIO, WaitIO, AbortIO, GetMsg
 from amiga::raw::consts import MEMF_PUBLIC
 from amiga::raw::consts import CMD_WRITE, ADCMD_FREE, ADIOF_PERVOL, ADIOF_NOWAIT
 from amiga::raw::structs import IOAudio, IORequest, MsgPort
@@ -740,6 +740,12 @@ impl AudioStreamer {
     /// * `channel` - Optional specific channel (None = any available)
     /// * `buffer_size` - Size per buffer (4KB - 64KB)
     pub fn with_options(source: *u8, source_size: u32, period: u16, sample_rate: u32, channel: Option<u8>, buffer_size: u32) -> Result<AudioStreamer, AudioError> {
+        if source == null {
+            return Result::Err(AudioError::NullSampleData)
+        }
+        if source_size < 2 {
+            return Result::Err(AudioError::SampleTooShort)
+        }
         // Validate channel if specified
         match channel {
             Option::Some(ch) => {
@@ -988,6 +994,12 @@ impl AudioStreamer {
     /// * `sample_rate` - Sample rate in Hz (for progress calculation)
     /// * `buffer_size` - Size per buffer (4KB - 64KB)
     pub fn with_stereo_options(source: *u8, source_size: u32, period: u16, sample_rate: u32, buffer_size: u32) -> Result<AudioStreamer, AudioError> {
+        if source == null {
+            return Result::Err(AudioError::NullSampleData)
+        }
+        if source_size < 2 {
+            return Result::Err(AudioError::SampleTooShort)
+        }
         // Step 1: Validate and clamp buffer size
         let actual_size = AudioStreamer::clamp_buffer_size(buffer_size)
 
@@ -1262,8 +1274,13 @@ impl AudioStreamer {
             return
         }
 
-        // Abort any pending I/O - but we need to be careful here
-        // Just mark as not playing; the drop handler will clean up
+        AudioStreamer::cancel_io(self.io_audio_0)
+        AudioStreamer::cancel_io(self.io_audio_1)
+        AudioStreamer::cancel_io(self.io_audio_2)
+        AudioStreamer::cancel_io(self.io_audio_0_r)
+        AudioStreamer::cancel_io(self.io_audio_1_r)
+        AudioStreamer::cancel_io(self.io_audio_2_r)
+        while GetMsg(self.port) != null {}
         self.is_playing = false
         self.pending_count = 0
     }
@@ -1491,6 +1508,18 @@ impl AudioStreamer {
         return self.io_audio_2_r
     }
 
+    /// Abort and collect one active audio request.
+    fn cancel_io(io: *IOAudio) {
+        if io == null {
+            return
+        }
+        let request = (*IORequest)&io.ioa_Request
+        if CheckIO(request) == null {
+            AbortIO(request)
+            WaitIO(request)
+        }
+    }
+
     /// Setup an IORequest for playback (helper to reduce duplication)
     fn setup_io_for_playback(&self, io: *IOAudio, buffer: *u8) {
         io.ioa_Request.io_Command = (u16)CMD_WRITE
@@ -1547,17 +1576,9 @@ impl AudioStreamer {
 
 impl Drop for AudioStreamer {
     fn drop(&var self) {
-        // Stop playback first
-        self.is_playing = false
+        self.stop()
 
         unsafe {
-            // Wait for any pending I/O to complete
-            // With stereo triple-buffering, we may have up to 6 pending requests
-            while self.pending_count > 0 {
-                let _ = GetMsg(self.port)
-                self.pending_count = self.pending_count - 1
-            }
-
             // Free chip RAM buffers (via ChipPool)
             if self.buffer_0 {
                 let _ = ChipPool::free(self.buffer_0)

@@ -1,0 +1,408 @@
+from std::core import Result
+from std::test::test import expect
+from amiga::raw::amiga_lib import DoMethodA
+from amiga::raw::consts import IECLASS_RAWKEY, IND_WRITEEVENT
+from amiga::raw::exec import CloseDevice, CreateIORequest, CreateMsgPort, DeleteIORequest, DeleteMsgPort, DoIO, OpenDevice
+from amiga::raw::graphics import WaitTOF
+from amiga::raw::intuition import ActivateWindow, LockPubScreen, UnlockPubScreen
+from amiga::raw::structs import InputEvent, IORequest, IOStdReq, Screen, Window
+from amiga::raw::mui_tags import *
+from amiga::sys::exec::thread import run_thread_loop, spawn_thread
+from amiga::sys::mui import MUIApp, MUIAppBuilder, MenuBuilder, MUITabsBuilder
+from amiga::sys::mui import app_busy, get_attr, list_clear, list_insert, list_redraw
+from amiga::sys::mui import make_button, make_file_popup, make_font_popup, make_progress
+from amiga::sys::mui import make_progress_with_text, make_radio, make_screenmode_popup
+from amiga::sys::mui import make_text, make_text_preparse, on_radio, set_attr, set_progress
+from amiga::sys::mui import set_str_attr, set_text
+
+static CHOICES: [*u8] = ["One", "Two", "Three", (*u8)0]
+static LIST_ENTRIES: [*u8] = ["First", "Second", (*u8)0]
+const REQUEST_CONTROL_WORK: u32 = 1 << 17
+static var REQUEST_RETURNED: bool = false
+
+fn c_equals(left: *u8, right: *u8) -> bool {
+    return false if left == null || right == null
+    var index: u32 = 0
+    forever {
+        let a = unsafe { left[index] }
+        let b = unsafe { right[index] }
+        return false if a != b
+        return true if a == 0
+        index++
+    }
+}
+
+fn activate_request_window() -> bool {
+    let screen: *Screen = LockPubScreen(null)
+    return false if screen == null
+    var found: *Window = null
+    var window = screen.FirstWindow
+    while window != null {
+        if c_equals(window.Title, "Tier12") {
+            found = window
+            break
+        }
+        window = window.NextWindow
+    }
+    UnlockPubScreen(null, screen)
+    if found != null { ActivateWindow(found) }
+    return found != null
+}
+
+@suppress("W0002", "The pinned input command and raw-key class fit their exact ABI fields")
+fn inject_escape() -> bool {
+    let port = CreateMsgPort()
+    if port == null { return false }
+    let request = CreateIORequest(port, @sizeof(IOStdReq))
+    if request == null {
+        DeleteMsgPort(port)
+        return false
+    }
+    let opened = unsafe { OpenDevice("input.device", 0, (*IORequest)request, 0) } == 0
+    var event: InputEvent = @zeroed(InputEvent)
+    event.ie_Class = (u8)IECLASS_RAWKEY
+    event.ie_Code = $45
+    let io = (*IOStdReq)request
+    io.io_Command = (u16)IND_WRITEEVENT
+    io.io_Length = @sizeof(InputEvent)
+    io.io_Data = (*u8)&var event
+    let down = opened && unsafe { DoIO((*IORequest)request) } == 0
+    event.ie_Code = $C5
+    let up = down && unsafe { DoIO((*IORequest)request) } == 0
+    if opened { unsafe { CloseDevice((*IORequest)request) } }
+    DeleteIORequest(request)
+    DeleteMsgPort(port)
+    return down && up
+}
+
+fn request_control_tick(_state: *u8) -> bool {
+    for var frame: u32 = 0; frame < 20; frame++ { WaitTOF() }
+    for var attempt: u32 = 0; attempt < 100 && !REQUEST_RETURNED; attempt++ {
+        let _ = activate_request_window()
+        WaitTOF()
+        let _ = inject_escape()
+        for var frame: u32 = 0; frame < 5; frame++ { WaitTOF() }
+    }
+    return false
+}
+
+fn request_controller() -> i32 {
+    return run_thread_loop(REQUEST_CONTROL_WORK, null, request_control_tick)
+}
+
+fn build_minimal_tree() {
+    var builder = MUIAppBuilder::new("Minimal MUI")
+    var window_builder = builder.window("Minimal")
+    var root = window_builder.vgroup()
+    root.label("Ready")
+    window_builder.root(root.build())
+    expect(window_builder.build() != null, "minimal window is created")
+    let built = builder.build()
+    let app_value = match built {
+        Result::Ok(app) => app,
+        Result::Err(_) => {
+            expect(false, "minimal application builds")
+            return
+        },
+    }
+    var app = app_value
+    expect(app.app_object() != null, "minimal application is created")
+    let quit: [u32] = [MUIM_Application_ReturnID, (u32)MUIV_Application_ReturnID_Quit]
+    unsafe { DoMethodA((*u32)app.app_object(), &quit[0]) }
+    app.run()
+}
+
+@test("MUI minimal application tree opens and disposes")
+pub fn mui_minimal_tree() {
+    build_minimal_tree()
+}
+
+// @covers amiga::sys::mui::MenuBuilder::new()
+// @covers amiga::sys::mui::MenuBuilder::menu(Str)
+// @covers amiga::sys::mui::MenuBuilder::build()
+// @covers amiga::sys::mui::MenuItemBuilder::item(Str, Str, u32)
+// @covers amiga::sys::mui::MenuItemBuilder::checkitem(Str, Str, u32, bool)
+// @covers amiga::sys::mui::MenuItemBuilder::separator()
+// @covers amiga::sys::mui::MenuItemBuilder::build()
+// @covers amiga::sys::mui::MenuStrip::ptr()
+// @covers amiga::sys::mui::MUIAppBuilder::new(Str)
+// @covers amiga::sys::mui::MUIAppBuilder::author(Str)
+// @covers amiga::sys::mui::MUIAppBuilder::description(Str)
+// @covers amiga::sys::mui::MUIAppBuilder::version(Str)
+// @covers amiga::sys::mui::MUIAppBuilder::base(Str)
+// @covers amiga::sys::mui::MUIAppBuilder::menustrip(*u8)
+// @covers amiga::sys::mui::MUIAppBuilder::window(Str)
+// @covers amiga::sys::mui::MUIAppBuilder::build()
+// @covers amiga::sys::mui::MUIWindowBuilder::id(u32)
+// @covers amiga::sys::mui::MUIWindowBuilder::close_gadget(bool)
+// @covers amiga::sys::mui::MUIWindowBuilder::size_gadget(bool)
+// @covers amiga::sys::mui::MUIWindowBuilder::root(*u8)
+// @covers amiga::sys::mui::MUIWindowBuilder::vgroup()
+// @covers amiga::sys::mui::MUIWindowBuilder::hgroup()
+// @covers amiga::sys::mui::MUIWindowBuilder::build()
+// @covers amiga::sys::mui::MUIGroupBuilder::frame(i32)
+// @covers amiga::sys::mui::MUIGroupBuilder::frame_title(Str)
+// @covers amiga::sys::mui::MUIGroupBuilder::same_size()
+// @covers amiga::sys::mui::MUIGroupBuilder::spacing(i32)
+// @covers amiga::sys::mui::MUIGroupBuilder::child(*u8)
+// @covers amiga::sys::mui::MUIGroupBuilder::button(u32, Str)
+// @covers amiga::sys::mui::MUIGroupBuilder::label(Str)
+// @covers amiga::sys::mui::MUIGroupBuilder::string(u32, Str, u32)
+// @covers amiga::sys::mui::MUIGroupBuilder::checkbox(u32, Str, bool)
+// @covers amiga::sys::mui::MUIGroupBuilder::slider(u32, i32, i32, i32)
+// @covers amiga::sys::mui::MUIGroupBuilder::cycle(u32, **u8)
+// @covers amiga::sys::mui::MUIGroupBuilder::listview(u32)
+// @covers amiga::sys::mui::MUIGroupBuilder::gauge(u32, i32, bool)
+// @covers amiga::sys::mui::MUIGroupBuilder::vgroup()
+// @covers amiga::sys::mui::MUIGroupBuilder::hgroup()
+// @covers amiga::sys::mui::MUIGroupBuilder::hspace()
+// @covers amiga::sys::mui::MUIGroupBuilder::vspace()
+// @covers amiga::sys::mui::MUIGroupBuilder::hbar()
+// @covers amiga::sys::mui::MUIGroupBuilder::vbar()
+// @covers amiga::sys::mui::MUIGroupBuilder::build()
+// @covers amiga::sys::mui::MUITabsBuilder::new(*MUIAppBuilder)
+// @covers amiga::sys::mui::MUITabsBuilder::frame(bool)
+// @covers amiga::sys::mui::MUITabsBuilder::add_tab(Str, *u8)
+// @covers amiga::sys::mui::MUITabsBuilder::build()
+// @covers amiga::sys::mui::make_button(*u8)
+// @covers amiga::sys::mui::make_text(*u8)
+// @covers amiga::sys::mui::make_text_preparse(*u8, *u8)
+// @covers amiga::sys::mui::make_radio(u32, **u8, i32)
+// @covers amiga::sys::mui::make_file_popup(u32)
+// @covers amiga::sys::mui::make_font_popup(u32)
+// @covers amiga::sys::mui::make_screenmode_popup(u32)
+// @covers amiga::sys::mui::make_progress(u32, i32, bool)
+// @covers amiga::sys::mui::make_progress_with_text(u32, i32, bool, *u8)
+// @covers amiga::sys::mui::MUIApp::app_object()
+// @covers amiga::sys::mui::MUIApp::close_window(*u8)
+// @covers amiga::sys::mui::MUIApp::notify(*u8, u32, u32, *u8, u32)
+// @covers amiga::sys::mui::MUIApp::notify_val(*u8, u32, u32, *u8, u32, u32)
+// @covers amiga::sys::mui::MUIApp::on_attr(*u8, u32, u32, u32)
+// @covers amiga::sys::mui::MUIApp::on_button(*u8, u32)
+// @covers amiga::sys::mui::MUIApp::on_checkbox(*u8, u32)
+// @covers amiga::sys::mui::MUIApp::on_close(*u8)
+// @covers amiga::sys::mui::MUIApp::on_close_return(*u8, u32)
+// @covers amiga::sys::mui::MUIApp::on_cycle(*u8, u32)
+// @covers amiga::sys::mui::MUIApp::on_list(*u8, u32)
+// @covers amiga::sys::mui::MUIApp::on_listview_doubleclick(*u8, u32)
+// @covers amiga::sys::mui::MUIApp::on_menu(u32)
+// @covers amiga::sys::mui::MUIApp::on_slider(*u8, u32)
+// @covers amiga::sys::mui::MUIApp::on_string(*u8, u32)
+// @covers amiga::sys::mui::MUIApp::on_string_change(*u8, u32)
+// @covers amiga::sys::mui::MUIApp::open_window(*u8)
+// @covers amiga::sys::mui::MUIApp::open_window_custom(*u8)
+// @covers amiga::sys::mui::MUIApp::run_once(*u32)
+// @covers amiga::sys::mui::MUIApp::run()
+// @covers amiga::sys::mui::on_radio(&MUIApp, *u8, u32)
+// @covers amiga::sys::mui::set_attr(*u8, u32, u32)
+// @covers amiga::sys::mui::set_text(*u8, Str)
+// @covers amiga::sys::mui::set_str_attr(*u8, u32, Str)
+// @covers amiga::sys::mui::get_attr(*u8, u32, *u32)
+// @covers amiga::sys::mui::list_insert(*u8, **u8, i32, i32)
+// @covers amiga::sys::mui::list_clear(*u8)
+// @covers amiga::sys::mui::list_redraw(*u8, i32)
+// @covers amiga::sys::mui::set_progress(*u8, i32)
+// @covers amiga::sys::mui::app_busy(*u8, bool)
+@test("MUI builders create and own a complete application object tree")
+pub fn mui_builder_contracts() {
+    var menu_builder = MenuBuilder::new()
+    var menu = menu_builder.menu("Project")
+    menu.item("Open", "O", 100)
+    menu.checkitem("Enabled", "E", 101, true)
+    menu.separator()
+    expect(menu.build() != null, "menu object is created")
+    let menu_strip = menu_builder.build()
+    expect(menu_strip.ptr() != null, "menu strip is created")
+
+    var builder = MUIAppBuilder::new("Tier 2 MUI")
+    builder.author("Novus")
+    builder.description("MUI runtime coverage")
+    builder.version("$VER: tier12_mui 1.0")
+    builder.base("TIER12MUI")
+    builder.menustrip(menu_strip.ptr())
+
+    var window_builder = builder.window("MUI Runtime")
+    window_builder.id($544D5549)
+    window_builder.close_gadget(true)
+    window_builder.size_gadget(true)
+    var root = window_builder.vgroup()
+    root.frame(MUIV_Frame_Group)
+    root.frame_title("Controls")
+    root.same_size()
+    root.spacing(2)
+
+    let button = root.button(1, "Button")
+    let label = root.label("Label")
+    let string_gadget = root.string(2, "Text", 32)
+    let checkbox = root.checkbox(3, "Check", true)
+    let slider = root.slider(4, 0, 100, 50)
+    let cycle = root.cycle(5, &CHOICES[0])
+    let listview = root.listview(6)
+    let gauge = root.gauge(7, 100, true)
+    expect(button != null && label != null && string_gadget != null && checkbox != null,
+        "basic MUI controls are created")
+    expect(slider != null && cycle != null && listview != null && gauge != null,
+        "advanced MUI controls are created")
+
+    var vertical = root.vgroup()
+    vertical.vspace()
+    vertical.hbar()
+    root.child(vertical.build())
+    var horizontal = root.hgroup()
+    horizontal.hspace()
+    horizontal.vbar()
+    root.child(horizontal.build())
+
+    let helper_button = make_button("Helper")
+    let helper_text = make_text("Helper text")
+    let helper_preparse = make_text_preparse("Centered", "\033c")
+    let radio = make_radio(8, &CHOICES[0], 0)
+    let file_popup = make_file_popup(9)
+    let font_popup = make_font_popup(10)
+    let screenmode_popup = make_screenmode_popup(11)
+    let progress = make_progress(12, 100, true)
+    let progress_text = make_progress_with_text(13, 100, true, "%ld%%")
+    expect(helper_button != null && helper_text != null && helper_preparse != null && radio != null,
+        "standalone MUI helpers create objects")
+    expect(file_popup != null && font_popup != null && screenmode_popup != null,
+        "MUI popup helpers create objects")
+    expect(progress != null && progress_text != null, "MUI progress helpers create objects")
+    root.child(helper_button)
+    root.child(helper_text)
+    root.child(helper_preparse)
+    root.child(radio)
+    root.child(file_popup)
+    root.child(font_popup)
+    root.child(screenmode_popup)
+    root.child(progress)
+    root.child(progress_text)
+
+    var tabs = MUITabsBuilder::new(&builder)
+    tabs.frame(true)
+    var page = root.vgroup()
+    page.label("Page")
+    tabs.add_tab("Tab", page.build())
+    let tab_object = tabs.build()
+    expect(tab_object != null, "tab register is created")
+    root.child(tab_object)
+
+    let built_root = root.build()
+    window_builder.root(built_root)
+    let window = window_builder.build()
+    expect(window != null, "vertical-root window is created")
+
+    var second_window_builder = builder.window("Horizontal Runtime")
+    var second_root = second_window_builder.hgroup()
+    second_root.label("Second")
+    let built_second_root = second_root.build()
+    second_window_builder.root(built_second_root)
+    expect(second_window_builder.build() != null, "horizontal-root window is created")
+
+    match builder.build() {
+        Result::Ok(app_value) => {
+            var app = app_value
+            exercise_app(&app, window, button, checkbox, cycle, listview, slider,
+                         string_gadget, label, gauge, radio, progress)
+        },
+        Result::Err(_) => expect(false, "MUI application is created"),
+    }
+}
+
+// @covers amiga::sys::mui::MUIApp::app_object()
+// @covers amiga::sys::mui::MUIApp::close_window(*u8)
+// @covers amiga::sys::mui::MUIApp::notify(*u8, u32, u32, *u8, u32)
+// @covers amiga::sys::mui::MUIApp::notify_val(*u8, u32, u32, *u8, u32, u32)
+// @covers amiga::sys::mui::MUIApp::on_attr(*u8, u32, u32, u32)
+// @covers amiga::sys::mui::MUIApp::on_button(*u8, u32)
+// @covers amiga::sys::mui::MUIApp::on_checkbox(*u8, u32)
+// @covers amiga::sys::mui::MUIApp::on_close(*u8)
+// @covers amiga::sys::mui::MUIApp::on_close_return(*u8, u32)
+// @covers amiga::sys::mui::MUIApp::on_cycle(*u8, u32)
+// @covers amiga::sys::mui::MUIApp::on_list(*u8, u32)
+// @covers amiga::sys::mui::MUIApp::on_listview_doubleclick(*u8, u32)
+// @covers amiga::sys::mui::MUIApp::on_menu(u32)
+// @covers amiga::sys::mui::MUIApp::on_slider(*u8, u32)
+// @covers amiga::sys::mui::MUIApp::on_string(*u8, u32)
+// @covers amiga::sys::mui::MUIApp::on_string_change(*u8, u32)
+// @covers amiga::sys::mui::MUIApp::open_window(*u8)
+// @covers amiga::sys::mui::MUIApp::open_window_custom(*u8)
+// @covers amiga::sys::mui::MUIApp::run_once(*u32)
+// @covers amiga::sys::mui::on_radio(&MUIApp, *u8, u32)
+// @covers amiga::sys::mui::set_attr(*u8, u32, u32)
+// @covers amiga::sys::mui::set_text(*u8, Str)
+// @covers amiga::sys::mui::set_str_attr(*u8, u32, Str)
+// @covers amiga::sys::mui::get_attr(*u8, u32, *u32)
+// @covers amiga::sys::mui::list_insert(*u8, **u8, i32, i32)
+// @covers amiga::sys::mui::list_clear(*u8)
+// @covers amiga::sys::mui::list_redraw(*u8, i32)
+// @covers amiga::sys::mui::set_progress(*u8, i32)
+// @covers amiga::sys::mui::app_busy(*u8, bool)
+fn exercise_app(app: &MUIApp, window: *u8, button: *u8, checkbox: *u8, cycle: *u8,
+                listview: *u8, slider: *u8, string_gadget: *u8, label: *u8,
+                gauge: *u8, radio: *u8, progress: *u8) {
+    let app_object = (*app).app_object()
+    expect(app_object != null, "application exposes its MUI object")
+    (*app).notify(button, MUIA_Pressed, 0, app_object, MUIM_Application_ReturnID)
+    (*app).notify_val(button, MUIA_Pressed, 0, app_object, MUIM_Application_ReturnID, 1)
+    (*app).on_attr(gauge, MUIA_Numeric_Value, MUIV_EveryTime, 2)
+    (*app).on_button(button, 3)
+    (*app).on_checkbox(checkbox, 4)
+    (*app).on_close(window)
+    (*app).on_close_return(window, 5)
+    (*app).on_cycle(cycle, 6)
+    (*app).on_list(listview, 7)
+    (*app).on_listview_doubleclick(listview, 8)
+    (*app).on_menu(100)
+    (*app).on_slider(slider, 9)
+    (*app).on_string(string_gadget, 10)
+    (*app).on_string_change(string_gadget, 11)
+    on_radio(app, radio, 12)
+
+    set_attr(gauge, MUIA_Gauge_Current, 25)
+    set_text(label, "Updated")
+    set_str_attr(string_gadget, MUIA_String_Contents, "Changed")
+    var stored: u32 = 0
+    let user_data = get_attr(button, MUIA_UserData, &var stored)
+    expect(user_data == 1 && stored == 1, "MUI attributes round-trip")
+    var list_object: u32 = 0
+    get_attr(listview, MUIA_Listview_List, &var list_object)
+    expect(list_object != 0, "listview exposes its list object")
+    list_insert((*u8)list_object, &LIST_ENTRIES[0], 2, -1)
+    list_redraw((*u8)list_object, -1)
+    list_clear((*u8)list_object)
+    set_progress(progress, 50)
+    app_busy(app_object, true)
+    app_busy(app_object, false)
+
+    (*app).open_window_custom(window)
+    (*app).close_window(window)
+    (*app).open_window(window)
+    (*app).close_window(window)
+    var signals: u32 = 0
+    let _ = (*app).run_once(&var signals)
+    let quit: [u32] = [MUIM_Application_ReturnID, (u32)MUIV_Application_ReturnID_Quit]
+    unsafe { DoMethodA((*u32)app_object, &quit[0]) }
+    (*app).run()
+}
+
+// @covers amiga::sys::mui::MUIApp::request(*u8, *u8, *u8, *u8)
+@test("MUI request executes its modal loop and honors Escape cancellation")
+pub fn mui_request_contract() {
+    var builder = MUIAppBuilder::new("MUI request")
+    var window_builder = builder.window("Request parent")
+    var root = window_builder.vgroup()
+    root.label("Ready")
+    window_builder.root(root.build())
+    let window = window_builder.build()
+    var app = builder.build().unwrap()
+    app.open_window_custom(window)
+    for var frame: u32 = 0; frame < 5; frame++ { WaitTOF() }
+    REQUEST_RETURNED = false
+    var controller = spawn_thread("Tier12 MUI request closer", request_controller, 8192).unwrap()
+    controller.signal(REQUEST_CONTROL_WORK)
+    let result = app.request(window, "Tier12", "MUI request", "OK")
+    REQUEST_RETURNED = true
+    controller.wait()
+    app.close_window(window)
+    expect(result == 0, "Escape returns the documented cancel value")
+}

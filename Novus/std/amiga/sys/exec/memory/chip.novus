@@ -98,6 +98,9 @@ impl ChipBuffer {
     /// Flushes the CPU data cache after copying to ensure DMA hardware
     /// sees the correct data on 68040/68060 systems.
     pub fn copy_from(&var self, src: *u8, len: u32) -> Result<(), ChipCacheError> {
+        if src == null && len != 0 {
+            return Result::Err(ChipCacheError::InvalidPointer)
+        }
         if len > self.size {
             return Result::Err(ChipCacheError::AssetTooLarge)
         }
@@ -206,6 +209,9 @@ impl Error for ChipCacheError {
 /// Use this when copying data that will be read by custom chips (Paula,
 /// Blitter, Copper, etc.).
 pub fn copy_to_chip(dst: *u8, src: *u8, size: u32) {
+    if dst == null || src == null || size == 0 {
+        return
+    }
     unsafe {
         CopyMem(src, dst, size)
         // Flush data cache for this memory range - critical for 68040/68060
@@ -227,6 +233,12 @@ pub fn copy_to_chip(dst: *u8, src: *u8, size: u32) {
 /// Note: The caller is responsible for managing the allocated memory.
 /// This simplified version does not implement caching or eviction.
 pub fn ensure_chip_ram(ptr: *u8, size: u32, priority: Priority) -> Result<*u8, ChipCacheError> {
+    if ptr == null {
+        return Result::Err(ChipCacheError::InvalidPointer)
+    }
+    if size == 0 {
+        return Result::Err(ChipCacheError::InvalidSize)
+    }
     // Already in chip RAM? Return as-is
     if is_chip_ram(ptr) {
         return Result::Ok(ptr)
@@ -266,6 +278,9 @@ pub fn ensure_chip_ram(ptr: *u8, size: u32, priority: Priority) -> Result<*u8, C
 ///   blitter_copy(dst_dma, src_dma, blit_size)
 ///   complete_dma_read(source_ptr, blit_size)
 pub fn prepare_for_dma_read(ptr: *u8, size: u32) -> *u8 {
+    if ptr == null || size == 0 {
+        return ptr
+    }
     unsafe {
         // CachePreDMA returns the physical address (may differ on MMU systems)
         // For DMA reads, flags = 0 (DMA_ReadFromRAM)
@@ -285,6 +300,9 @@ pub fn prepare_for_dma_read(ptr: *u8, size: u32) -> *u8 {
 ///
 /// On 68020/030, this is a no-op.
 pub fn complete_dma_read(ptr: *u8, size: u32) {
+    if ptr == null || size == 0 {
+        return
+    }
     unsafe {
         var actual_size: u32 = size
         CachePostDMA(ptr, (&var actual_size) as *u8, DMA_ReadFromRAM)
@@ -306,11 +324,14 @@ pub fn complete_dma_read(ptr: *u8, size: u32) {
 ///   blitter_fill(dst_dma, fill_size)
 ///   complete_dma_write(dest_ptr, fill_size)
 pub fn prepare_for_dma_write(ptr: *u8, size: u32) -> *u8 {
+    if ptr == null || size == 0 {
+        return ptr
+    }
     unsafe {
         // For DMA writes, we need to invalidate the cache
         // CachePreDMA with flags = 0 handles this
         var actual_size: u32 = size
-        return CachePreDMA(ptr, (&var actual_size) as *u8, DMA_ReadFromRAM)
+        return CachePreDMA(ptr, (&var actual_size) as *u8, 0)
     }
 }
 
@@ -324,9 +345,12 @@ pub fn prepare_for_dma_write(ptr: *u8, size: u32) -> *u8 {
 ///
 /// On 68020/030, this is a no-op.
 pub fn complete_dma_write(ptr: *u8, size: u32) {
+    if ptr == null || size == 0 {
+        return
+    }
     unsafe {
         var actual_size: u32 = size
-        CachePostDMA(ptr, (&var actual_size) as *u8, DMA_ReadFromRAM)
+        CachePostDMA(ptr, (&var actual_size) as *u8, 0)
     }
 }
 

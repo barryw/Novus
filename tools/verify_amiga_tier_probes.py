@@ -25,6 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from generate_api_docs import extract
 from verify_amiga_tiers import callable_id, tier_of
+from verify_ndk_compile_probes import shard_modules
 
 ROOT = Path(__file__).resolve().parents[1]
 PRIMITIVES = {"u8", "u16", "u32", "u64", "usize", "i8", "i16", "i32", "i64", "isize",
@@ -68,13 +69,32 @@ def generic_parameters(signature: str, declaration: str) -> list[tuple[str, bool
     return []
 
 
-def type_owners(std_root: Path, symbols: list[dict]) -> dict[str, str]:
+def type_owners(std_root: Path, symbols: list[dict]) -> dict[str, set[str]]:
     """Map an exported type name to the module that publishes it."""
-    owners: dict[str, str] = {}
+    owners: dict[str, set[str]] = defaultdict(set)
     for symbol in symbols:
         if symbol["kind"] in {"struct", "enum", "union", "type", "trait", "class"}:
-            owners.setdefault(symbol["name"], symbol["module"])
+            owners[symbol["name"]].add(symbol["module"])
     return owners
+
+
+def import_aliases(std_root: Path) -> dict[str, dict[str, tuple[str, str]]]:
+    aliases: dict[str, dict[str, tuple[str, str]]] = defaultdict(dict)
+    for path in (std_root / "amiga").rglob("*.novus"):
+        module = "::".join(path.relative_to(std_root).with_suffix("").parts)
+        for line in path.read_text().splitlines():
+            match = re.match(r"^from\s+(\S+)\s+import\s+(.+)$", line.strip())
+            if not match:
+                continue
+            source = match.group(1)
+            for imported in split_generic_parameters(match.group(2)):
+                if " as " in imported:
+                    original, alias = imported.split(" as ", 1)
+                    aliases[module][alias.strip()] = (original.strip(), source)
+                else:
+                    name = imported.strip()
+                    aliases[module][name] = (name, source)
+    return aliases
 
 
 def argument(type_name: str) -> str:
@@ -107,11 +127,17 @@ def probe_body(item: dict, index: int) -> list[str]:
                   if parameter["modifiers"] != "..."]
     receiver = next((parameter for parameter in parameters if parameter["receiver"]), None)
     owner, name = item["owner"], item["name"]
+    if item.get("trait_members"):
+        owner = f"_TierProbe{index}"
 
     # Generic callables need concrete arguments; the probe only has to type-check and link,
     # so bind every type parameter to u32 and every const parameter to a small extent.
-    declared = item["owner_generics"] + generic_parameters(item["symbol"]["signature"], f"fn {name}")
+    callable_generics = generic_parameters(item["symbol"]["signature"], f"fn {name}")
+    declared = item["owner_generics"] + callable_generics
     bindings = {parameter: ("4" if is_const else "u32") for parameter, is_const in declared}
+    bindings.update({alias: original for alias, (original, _) in item.get("aliases", {}).items()})
+    for parameter in re.findall(r"\b(\w+)\s*:\s*Error\b", item["symbol"]["signature"]):
+        bindings[parameter] = "StringError"
     owner_type = owner_path = owner
     if owner and item["owner_generics"]:
         arguments_text = ", ".join(bindings[p] for p, _ in item["owner_generics"])
@@ -134,41 +160,76 @@ def probe_body(item: dict, index: int) -> list[str]:
             f"        {binding}{variable}.{name}({', '.join(arguments)})",
         ]
     path = f"{owner_path}::{name}" if owner else name
+    if not owner and callable_generics:
+        path += "::<" + ", ".join(bindings[p] for p, _ in callable_generics) + ">"
     return [f"        {binding}{path}({', '.join(arguments)})"]
 
 
-def probe_imports(items: list[dict], owners: dict[str, str], module: str) -> list[str]:
+def trait_definition(item: dict, index: int) -> list[str]:
+    members = item.get("trait_members")
+    if not members:
+        return []
+    name = f"_TierProbe{index}"
+    lines = [f"struct {name} {{ value: u8 }}", "", f"impl {item['owner']} for {name} {{"]
+    for member in members:
+        returns = ((member.get("returns") or {}).get("type") or "").strip()
+        lines.append(f"    {member['signature'].removesuffix('{').rstrip()} {{")
+        if returns and returns != "unit":
+            lines.append(f"        return @zeroed({returns})")
+        lines.append("    }")
+        lines.append("")
+    lines.append("}")
+    lines.append("")
+    return lines
+
+
+def probe_imports(items: list[dict], owners: dict[str, set[str]], module: str) -> list[str]:
     needed: dict[str, set[str]] = defaultdict(set)
     for item in items:
         names = {item["owner"]} if item["owner"] else set()
+        if re.search(r"\b\w+\s*:\s*Error\b", item["symbol"]["signature"]):
+            names.add("StringError")
         if not item["owner"]:
             needed[item["symbol"]["module"]].add(item["name"])
-        for parameter in item["symbol"]["parameters"]:
-            names.update(IDENTIFIER.findall(parameter["type"]))
-        returns = item["symbol"].get("returns") or {}
-        names.update(IDENTIFIER.findall(returns.get("type") or ""))
+        for member in item.get("trait_members") or [item["symbol"]]:
+            for parameter in member["parameters"]:
+                names.update(IDENTIFIER.findall(parameter["type"]))
+            returns = member.get("returns") or {}
+            names.update(IDENTIFIER.findall(returns.get("type") or ""))
         for candidate in names:
             if not candidate or candidate in PRIMITIVES:
                 continue
-            source_module = owners.get(candidate)
+            if candidate in item.get("aliases", {}):
+                original, source_module = item["aliases"][candidate]
+                needed[source_module].add(original)
+                continue
+            owner_modules = owners.get(candidate, set())
+            source_module = module if module in owner_modules else min(owner_modules, default=None)
             if source_module and source_module != module:
                 needed[source_module].add(candidate)
             elif source_module == module:
                 needed[module].add(candidate)
+    if module not in needed:
+        anchors = sorted(name for name, modules in owners.items() if module in modules)
+        if anchors:
+            needed[module].add(anchors[0])
     # `extract` reports std modules relative to Novus/std, so restore the `std::` root.
-    return [f"from {source if source.startswith('amiga::') else 'std::' + source} "
+    return [f"from {source if source.startswith(('amiga::', 'std::')) else 'std::' + source} "
             f"import {', '.join(sorted(names))}"
             for source, names in sorted(needed.items()) if names]
 
 
-def probe_source(module: str, items: list[dict], owners: dict[str, str]) -> str:
+def probe_source(module: str, items: list[dict], owners: dict[str, set[str]]) -> str:
     body: list[str] = []
+    definitions: list[str] = []
     for index, item in enumerate(items):
+        definitions.extend(trait_definition(item, index))
         body.extend(probe_body(item, index))
     return "\n".join([
         "// Generated compile/link probe. Never execute this binary.",
         *probe_imports(items, owners, module),
         "",
+        *definitions,
         "fn probe_all() {",
         "    unsafe {",
         *body,
@@ -189,7 +250,7 @@ def safe_name(module: str) -> str:
 
 def compile_source(source: Path, binary: Path, args: argparse.Namespace) -> dict:
     command = ["dotnet", str(args.compiler), "compile", str(source), "-o", str(binary),
-               "--release", "--no-cache"]
+               "--release"]
     started = time.monotonic_ns()
     completed = subprocess.run(command, cwd=ROOT, text=True, errors="replace", capture_output=True)
     result = {"return_code": completed.returncode, "stdout": completed.stdout,
@@ -204,7 +265,7 @@ def failure_phase(attempt: dict) -> str:
     return "link" if "undefined symbol" in attempt["stderr"] else "compile"
 
 
-def compile_group(module: str, items: list[dict], owners: dict[str, str], name: str,
+def compile_group(module: str, items: list[dict], owners: dict[str, set[str]], name: str,
                   args: argparse.Namespace) -> tuple[list[dict], dict]:
     source = args.output / f"{name}.novus"
     source.write_text(probe_source(module, items, owners))
@@ -220,7 +281,7 @@ def compile_group(module: str, items: list[dict], owners: dict[str, str], name: 
     return left + right, attempt
 
 
-def compile_measured(module: str, items: list[dict], owners: dict[str, str], name: str,
+def compile_measured(module: str, items: list[dict], owners: dict[str, set[str]], name: str,
                      args: argparse.Namespace) -> tuple[list[dict], dict]:
     started = time.monotonic_ns()
     baseline_source = args.output / f"{name}_baseline.novus"
@@ -249,9 +310,10 @@ def compile_measured(module: str, items: list[dict], owners: dict[str, str], nam
     return results, baseline
 
 
-def inventory(std_root: Path, tiers: set[str]) -> tuple[dict[str, list[dict]], dict[str, str]]:
+def inventory(std_root: Path, tiers: set[str]) -> tuple[dict[str, list[dict]], dict[str, set[str]]]:
     symbols = list(extract(std_root, None, {}))
     owners = type_owners(std_root, symbols)
+    aliases = import_aliases(std_root)
     declared_generics = {
         symbol["name"]: generic_parameters(symbol["signature"], symbol["name"])
         for symbol in symbols
@@ -259,18 +321,28 @@ def inventory(std_root: Path, tiers: set[str]) -> tuple[dict[str, list[dict]], d
     }
     by_module: dict[str, list[dict]] = defaultdict(list)
     for symbol in symbols:
-        if symbol["kind"] != "fn":
+        if symbol["kind"] not in {"fn", "trait"}:
             continue
         tier = tier_of(symbol["source"])
         if tier is None or tier not in tiers:
             continue
-        identifier = callable_id(symbol["module"], symbol["owner"], symbol["name"],
-                                 symbol["signature"])
-        by_module[symbol["module"]].append({
-            "id": identifier, "tier": tier, "owner": symbol["owner"],
-            "name": symbol["name"], "symbol": symbol,
-            "owner_generics": declared_generics.get(symbol["owner"], []),
-        })
+        members = [symbol] if symbol["kind"] == "fn" else symbol["members"]
+        for member in members:
+            if "fn " not in member["signature"]:
+                continue
+            owner = symbol["owner"] if symbol["kind"] == "fn" else symbol["name"]
+            member_symbol = symbol if symbol["kind"] == "fn" else {
+                **member, "module": symbol["module"], "owner": owner,
+            }
+            identifier = callable_id(symbol["module"], owner, member["name"],
+                                     member["signature"])
+            by_module[symbol["module"]].append({
+                "id": identifier, "tier": tier, "owner": owner,
+                "name": member["name"], "symbol": member_symbol,
+                "owner_generics": declared_generics.get(owner, []),
+                "aliases": aliases.get(symbol["module"], {}),
+                "trait_members": symbol["members"] if symbol["kind"] == "trait" else None,
+            })
     return ({module: sorted(items, key=lambda item: item["id"])
              for module, items in sorted(by_module.items())}, owners)
 
@@ -303,8 +375,7 @@ def main() -> int:
     if args.shard_index is not None or args.shard_count is not None:
         if args.shard_index is None or args.shard_count is None or not 0 <= args.shard_index < args.shard_count:
             parser.error("--shard-index and --shard-count must define a valid zero-based shard")
-        modules = {module: items for index, (module, items) in enumerate(modules.items())
-                   if index % args.shard_count == args.shard_index}
+        modules = shard_modules(modules, args.shard_count)[args.shard_index]
 
     args.output.mkdir(parents=True, exist_ok=True)
     results = []

@@ -1,0 +1,63 @@
+from std::test::test import expect
+from amiga::audio import AudioError, ChannelPreference, Device, Sample
+
+// @covers amiga::audio::Sample::from_pcm(Slice<u8>, u32)
+// @covers amiga::audio::Sample::system()
+// @covers amiga::audio::Sample::into_system()
+// @covers amiga::audio::Sample::from_system(SystemSample)
+@test("application samples preserve DMA ownership and metadata")
+pub fn application_sample_contracts() {
+    let pcm: [u8] = [0, 16, 32, 16, 0, 240, 224, 240, 0, 16, 32, 16, 0, 240, 224, 240]
+    let sample = match Sample::from_pcm(&pcm, 11025) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "PCM sample should allocate")
+            return
+        },
+    }
+    expect(sample.system().bytes() == 16 && sample.system().sample_rate() == 11025,
+        "sample metadata is preserved")
+    let system = sample.into_system()
+    let adopted = Sample::from_system(system)
+    expect(adopted.system().words() == 8, "system sample ownership round-trips")
+}
+
+// @covers amiga::audio::ApplicationAudioDevice::open(ChannelPreference, i8)
+// @covers amiga::audio::ApplicationAudioDevice::open_any(i8)
+// @covers amiga::audio::ApplicationAudioDevice::play(&Sample, u16)
+// @covers amiga::audio::ApplicationAudioDevice::play_looped(&Sample, u16)
+// @covers amiga::audio::ApplicationAudioDevice::stop()
+// @covers amiga::audio::ApplicationAudioDevice::resume()
+// @covers amiga::audio::ApplicationAudioDevice::system()
+// @covers amiga::audio::ApplicationAudioDevice::into_system()
+// @covers amiga::audio::ApplicationAudioDevice::from_system(SystemDevice)
+// @covers amiga::sys::device::audio::AudioDeviceHandle::play_native(&SampleHandle, u16, u16, bool)
+@test("application audio owns one device and validates playback")
+pub fn application_audio_device_contracts() {
+    let pcm: [u8] = [0, 16, 32, 16, 0, 240, 224, 240, 0, 16, 32, 16, 0, 240, 224, 240]
+    let sample = match Sample::from_pcm(&pcm, 11025) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "PCM sample should allocate")
+            return
+        },
+    }
+    match Device::open(ChannelPreference::Any, 0) {
+        Result::Ok(device) => {
+            let system = device.into_system()
+            var adopted = Device::from_system(system)
+            expect(adopted.system().channel_count() == 1, "one Paula channel is owned")
+            expect(adopted.play(&sample, 1).is_ok(), "single playback completes")
+            expect(adopted.play_looped(&sample, 65).is_err(), "invalid loop volume is rejected before I/O")
+            expect(adopted.stop().is_ok(), "device stops")
+            expect(adopted.resume().is_ok(), "device resumes")
+        },
+        Result::Err(_) => expect(false, "audio.device should open"),
+    }
+    expect(Device::open_any(0).is_ok(), "open_any acquires a channel")
+}
+
+@test("application audio errors expose messages")
+pub fn application_audio_error_contract() {
+    expect((u32)AudioError::InvalidSample.message() != 0, "audio error message is non-null")
+}

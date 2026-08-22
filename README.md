@@ -100,6 +100,8 @@ pub fn main() -> i32 {
 - **[novuslang.com](https://novuslang.com)** — Official website with guides and examples
 - **[API documentation](docs/API_DOCUMENTATION.md)** — Source comments, machine-readable JSON, and website generation
 - **[Ownership and Memory Safety](website/src/content/docs/guide/memory.md)** — Canonical rules for moves, borrows, views, and raw access
+- **[Amiga Tier 1/2 verification](docs/AMIGA_TIER12_VERIFICATION.md)** — A1200/A4000 coverage, speed, size, and open leak evidence
+- **[AGA capabilities](docs/AGA_CAPABILITIES.md)** — Runtime-gated sprites, bitplanes, screens, and palettes
 - **[Language Design Doc](docs/LanguageDesignDoc.md)** — Complete language specification
 - **[Programmer's Guide](guide/)** — Comprehensive reference (PDF)
 

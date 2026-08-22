@@ -10,10 +10,10 @@ from std::string import Str
 from amiga::sys::dos::errors import DosError
 from amiga::sys::timer::device import TimerHandle, Duration
 from amiga::raw::structs import Task, MsgPort, TagItem, Message, Process
-from amiga::raw::dos import CreateNewProc, CheckSignal, Input, Output
-from amiga::raw::exec import AllocMem, FreeMem, Wait, Signal, FindTask, SetSignal
+from amiga::raw::dos import CreateNewProc, CheckSignal, Delay, Input, Output
+from amiga::raw::exec import AllocMem, FreeMem, Wait, Signal, FindTask, SetSignal, AllocSignal, FreeSignal, CopyMem
 from amiga::raw::consts import NP_Entry, NP_StackSize, NP_Name, NP_Priority
-from amiga::raw::consts import NP_NotifyOnDeath, NP_Synchronous, NP_ExitData
+from amiga::raw::consts import NP_ExitCode, NP_ExitData
 from amiga::raw::consts import NP_Input, NP_Output, NP_CloseInput, NP_CloseOutput
 from amiga::raw::consts import SIGBREAKF_CTRL_C, SIGBREAKF_CTRL_D
 from amiga::raw::consts import SIGBREAKF_CTRL_E, SIGBREAKF_CTRL_F
@@ -100,12 +100,38 @@ pub struct ProcessHandle {
     process: *Process,
     /// The is running value stored by `ProcessHandle`.
     is_running: bool,
+    /// Parent/child completion state owned by this handle.
+    comm: *u8,
+    /// Signal allocated in the parent for completion notification.
+    death_signal: i8,
+    /// Allocation size for completion state plus the copied process name.
+    comm_size: u32,
+}
+
+// parent task (4), signal number (1), complete flag (1), padding (2),
+// return code (4), caller data (4)
+const PROCESS_COMM_HEADER_SIZE: u32 = 16
+
+type ProcessExitCallback = amiga fn(i32 in d0, i32 in d1) -> i32 in d0
+
+amiga fn process_exit_callback(return_code: i32 in d0, exit_data: i32 in d1) -> i32 in d0 {
+    let comm = (*u8)(u32)exit_data
+    if comm != null {
+        let return_code_ptr = (*i32)((u32)comm + 8)
+        let complete_ptr = (*u8)((u32)comm + 5)
+        *return_code_ptr = return_code
+        *complete_ptr = 1
+        let parent = *(**Task)comm
+        let signal = *(*i8)((u32)comm + 4)
+        Signal(parent, (u32)1 << (u32)signal)
+    }
+    return return_code
 }
 
 impl ProcessHandle {
     /// Check if the task is still running
     pub fn is_running(&self) -> bool {
-        return self.is_running
+        return self.is_running && (self.comm == null || *(*u8)((u32)self.comm + 5) == 0)
     }
 
     /// Wait for the task to complete
@@ -116,17 +142,25 @@ impl ProcessHandle {
             return 0
         }
 
-        // Wait for process using synchronous wait
-        // TODO: Implement proper death message handling
-        // For now, we mark as not running
-
+        if *(*u8)((u32)self.comm + 5) == 0 {
+            Wait((u32)1 << (u32)self.death_signal)
+        }
+        let return_code = *(*i32)((u32)self.comm + 8)
+        let process_name = (*u8)((u32)self.comm + PROCESS_COMM_HEADER_SIZE)
+        while FindTask(process_name) == (*Task)self.process {
+            Delay(1)
+        }
+        FreeSignal(self.death_signal)
+        unsafe { FreeMem(self.comm, self.comm_size) }
+        self.comm = null
+        self.death_signal = -1
         self.is_running = false
-        return 0
+        return return_code
     }
 
     /// Send a signal to the task
     pub fn signal(&self, signal_mask: u32) -> bool {
-        if !self.is_running {
+        if !self.is_running() {
             return false
         }
 
@@ -155,14 +189,12 @@ impl ProcessHandle {
 }
 
 impl Drop for ProcessHandle {
-    /// ProcessHandle does NOT kill the process on drop.
-    /// The process continues running independently.
-    /// Use break_ctrl_c() and wait() for graceful termination.
+    /// Dropping waits for a running process so completion state cannot leak.
     fn drop(&var self) {
-        // Just clear our reference - process continues running
-        // DOS owns the process memory and handles cleanup
+        if self.is_running {
+            self.wait()
+        }
         self.process = null
-        self.is_running = false
     }
 }
 
@@ -234,13 +266,43 @@ pub fn spawn_task_fn_with_ptr(name: Str, entry: fn() -> i32, data: *u8, stack_si
 }
 
 fn spawn_task_fn_impl(name: Str, entry: fn() -> i32, data: Option<*u8>, stack_size: u32) -> Result<ProcessHandle, DosError> {
+    if stack_size == 0 {
+        return Result::Err(DosError::Unknown)
+    }
+
+    let death_signal = AllocSignal(-1)
+    if death_signal == -1 {
+        return Result::Err(DosError::NoFreeStore)
+    }
+
+    let comm_size = PROCESS_COMM_HEADER_SIZE + (u32)name.len() + 1
+    let comm = unsafe { AllocMem(comm_size, MEMF_PUBLIC | MEMF_CLEAR) }
+    if comm == null {
+        FreeSignal(death_signal)
+        return Result::Err(DosError::NoFreeStore)
+    }
+    let parent_ptr = (**Task)comm
+    let signal_ptr = (*i8)((u32)comm + 4)
+    *parent_ptr = FindTask(null)
+    *signal_ptr = death_signal
+    unsafe { CopyMem(name.as_cstr(), comm + PROCESS_COMM_HEADER_SIZE, (u32)name.len() + 1) }
+    match data {
+        Option::Some(data_ptr) => {
+            let user_data_ptr = (*u32)((u32)comm + 12)
+            *user_data_ptr = (u32)data_ptr
+        },
+        Option::None => {}
+    }
+
     // Allocate tag list
     // Need: Entry, Name, StackSize, Priority, Output, CloseOutput, Input, CloseInput, NotifyOnDeath, TAG_DONE
-    let tag_count: u32 = 11
+    let tag_count: u32 = 13
     let tag_size = tag_count * @sizeof(TagItem)
 
     let tag_mem = unsafe { AllocMem(tag_size, MEMF_PUBLIC | MEMF_CLEAR) }
     if (u32)tag_mem == 0 {
+        unsafe { FreeMem(comm, comm_size) }
+        FreeSignal(death_signal)
         return Result::Err(DosError::Unknown)
     }
 
@@ -287,20 +349,11 @@ fn spawn_task_fn_impl(name: Str, entry: fn() -> i32, data: Option<*u8>, stack_si
     set_tag(tag_ptr, idx, NP_CloseInput, 0)
     idx++
 
-    // Enable death notification
-    set_tag(tag_ptr, idx, NP_NotifyOnDeath, 1)
+    let exit_fn: ProcessExitCallback = process_exit_callback
+    set_tag(tag_ptr, idx, NP_ExitCode, *(*u32)&exit_fn)
     idx++
-
-    // If we have data to pass, use NP_ExitData tag to store it in pr_ExitData field.
-    // This avoids using pr_MsgPort which is reserved for DOS packet I/O and uses
-    // SIGF_DOS (signal bit 8). Sending messages to pr_MsgPort can corrupt DOS state.
-    match data {
-        Option::Some(data_ptr) => {
-            set_tag(tag_ptr, idx, NP_ExitData, (u32)data_ptr)
-            idx++
-        },
-        Option::None => {}
-    }
+    set_tag(tag_ptr, idx, NP_ExitData, (u32)comm)
+    idx++
 
     // Terminate tag list
     set_tag(tag_ptr, idx, 0, 0)
@@ -315,12 +368,17 @@ fn spawn_task_fn_impl(name: Str, entry: fn() -> i32, data: Option<*u8>, stack_si
 
     // Check result - CreateNewProc returns null on failure
     if (u32)process == 0 {
+        unsafe { FreeMem(comm, comm_size) }
+        FreeSignal(death_signal)
         return Result::Err(DosError::Unknown)
     }
 
     return Result::Ok(ProcessHandle {
         process: process,
-        is_running: true
+        is_running: true,
+        comm: comm,
+        death_signal: death_signal,
+        comm_size: comm_size
     })
 }
 
@@ -364,12 +422,15 @@ pub fn receive_startup_data() -> Option<*u8> {
 
     // Read data pointer from pr_ExitData field
     // This was set via NP_ExitData tag when the process was created
-    let data = me.pr_ExitData
+    let comm = me.pr_ExitData
 
+    if comm == 0 {
+        return Option::None
+    }
+    let data = *(*u32)((u32)comm + 12)
     if data == 0 {
         return Option::None
     }
-
     return Option::Some((*u8)data)
 }
 

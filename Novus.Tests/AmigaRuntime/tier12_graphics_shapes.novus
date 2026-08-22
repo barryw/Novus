@@ -1,0 +1,103 @@
+from std::core import Option
+from std::test::test import expect
+from amiga::sys::graphics::shapes import Ellipse, Point, Rect, Size
+
+// @covers amiga::sys::graphics::shapes::SystemPoint::add(&Point)
+// @covers amiga::sys::graphics::shapes::SystemPoint::equals(&Point)
+// @covers amiga::sys::graphics::shapes::SystemPoint::new(i16, i16)
+// @covers amiga::sys::graphics::shapes::SystemPoint::offset(i16, i16)
+// @covers amiga::sys::graphics::shapes::SystemPoint::sub(&Point)
+// @covers amiga::sys::graphics::shapes::SystemPoint::zero()
+@test("system points preserve coordinate arithmetic")
+pub fn system_point_contracts() {
+    let origin = Point::zero()
+    let point = Point::new(4, 7)
+    let moved = point.offset(3, -2)
+    let delta = Point::new(3, -2)
+    let added = point.add(&delta)
+    let restored = added.sub(&delta)
+    expect(origin.equals(&Point::new(0, 0)), "zero is the origin")
+    expect(moved.equals(&Point::new(7, 5)), "offset adjusts both axes")
+    expect(added.equals(&moved), "addition matches offset")
+    expect(restored.equals(&point), "subtraction restores the point")
+}
+
+// @covers amiga::sys::graphics::shapes::Rect::bottom_right()
+// @covers amiga::sys::graphics::shapes::Rect::center()
+// @covers amiga::sys::graphics::shapes::Rect::contains(&Point)
+// @covers amiga::sys::graphics::shapes::Rect::contains_xy(i16, i16)
+// @covers amiga::sys::graphics::shapes::Rect::equals(&Rect)
+// @covers amiga::sys::graphics::shapes::Rect::expand(i16)
+// @covers amiga::sys::graphics::shapes::Rect::from_points(&Point, &Point)
+// @covers amiga::sys::graphics::shapes::Rect::from_pos_size(i16, i16, i16, i16)
+// @covers amiga::sys::graphics::shapes::Rect::height()
+// @covers amiga::sys::graphics::shapes::Rect::intersection(&Rect)
+// @covers amiga::sys::graphics::shapes::Rect::intersects(&Rect)
+// @covers amiga::sys::graphics::shapes::Rect::is_empty()
+// @covers amiga::sys::graphics::shapes::Rect::new(i16, i16, i16, i16)
+// @covers amiga::sys::graphics::shapes::Rect::offset(i16, i16)
+// @covers amiga::sys::graphics::shapes::Rect::shrink(i16)
+// @covers amiga::sys::graphics::shapes::Rect::top_left()
+// @covers amiga::sys::graphics::shapes::Rect::width()
+// @covers amiga::sys::graphics::shapes::Rect::zero()
+@test("system rectangles preserve inclusive geometry")
+pub fn system_rect_contracts() {
+    let rect = Rect::from_pos_size(10, 20, 8, 6)
+    let same = Rect::new(10, 20, 17, 25)
+    let corners = Rect::from_points(&rect.top_left(), &rect.bottom_right())
+    expect(rect.equals(&same) && corners.equals(&rect), "constructors agree")
+    expect(rect.width() == 8 && rect.height() == 6, "dimensions are inclusive")
+    expect(rect.center().equals(&Point::new(13, 22)), "center rounds down")
+    expect(rect.contains(&Point::new(10, 20)), "top-left is included")
+    expect(rect.contains_xy(17, 25) && !rect.contains_xy(18, 25), "bounds are inclusive")
+
+    let overlap = Rect::new(15, 23, 30, 40)
+    expect(rect.intersects(&overlap), "overlap is detected")
+    match rect.intersection(&overlap) {
+        Option::Some(value) => expect(value.equals(&Rect::new(15, 23, 17, 25)), "intersection is clipped"),
+        Option::None => expect(false, "intersection exists"),
+    }
+    expect(rect.offset(2, 3).equals(&Rect::new(12, 23, 19, 28)), "offset preserves size")
+    expect(rect.expand(2).shrink(2).equals(&rect), "expand and shrink are inverse")
+    expect(Rect::zero().width() == 1, "zero rectangle contains one inclusive coordinate")
+    expect(Rect::new(1, 1, 0, 0).is_empty(), "inverted bounds are empty")
+}
+
+// @covers amiga::sys::graphics::shapes::Ellipse::bounds()
+// @covers amiga::sys::graphics::shapes::Ellipse::circle(i16, i16, i16)
+// @covers amiga::sys::graphics::shapes::Ellipse::circle_from_center(Point, i16)
+// @covers amiga::sys::graphics::shapes::Ellipse::diameter_x()
+// @covers amiga::sys::graphics::shapes::Ellipse::diameter_y()
+// @covers amiga::sys::graphics::shapes::Ellipse::from_center(Point, i16, i16)
+// @covers amiga::sys::graphics::shapes::Ellipse::is_circle()
+// @covers amiga::sys::graphics::shapes::Ellipse::new(i16, i16, i16, i16)
+// @covers amiga::sys::graphics::shapes::Ellipse::offset(i16, i16)
+// @covers amiga::sys::graphics::shapes::Ellipse::scale(i16)
+@test("system ellipses preserve centers radii and bounds")
+pub fn system_ellipse_contracts() {
+    let center = Point::new(12, 20)
+    let ellipse = Ellipse::from_center(center, 4, 6)
+    let direct = Ellipse::new(12, 20, 4, 6)
+    expect(ellipse.bounds().equals(&direct.bounds()), "constructors agree")
+    expect(ellipse.diameter_x() == 8 && ellipse.diameter_y() == 12, "diameters double radii")
+    expect(!ellipse.is_circle(), "unequal radii are not circular")
+    expect(ellipse.offset(3, -2).bounds().equals(&Rect::new(11, 12, 19, 24)), "offset moves bounds")
+    expect(ellipse.scale(2).bounds().equals(&Rect::new(4, 8, 20, 32)), "scale changes radii")
+    expect(Ellipse::circle(1, 2, 3).is_circle(), "circle constructor is circular")
+    expect(Ellipse::circle_from_center(Point::new(1, 2), 3).is_circle(), "point circle is circular")
+}
+
+// @covers amiga::sys::graphics::shapes::Size::area()
+// @covers amiga::sys::graphics::shapes::Size::equals(&Size)
+// @covers amiga::sys::graphics::shapes::Size::is_empty()
+// @covers amiga::sys::graphics::shapes::Size::new(i16, i16)
+// @covers amiga::sys::graphics::shapes::Size::square(i16)
+// @covers amiga::sys::graphics::shapes::Size::zero()
+@test("system sizes preserve dimensions and area")
+pub fn system_size_contracts() {
+    let size = Size::new(7, 5)
+    expect(size.area() == 35, "area multiplies dimensions")
+    expect(Size::square(7).area() == 49, "square uses equal dimensions")
+    expect(Size::zero().is_empty(), "zero size is empty")
+    expect(size.equals(&Size::new(7, 5)), "equal dimensions compare equal")
+}

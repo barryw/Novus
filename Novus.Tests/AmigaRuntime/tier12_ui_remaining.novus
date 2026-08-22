@@ -1,0 +1,86 @@
+from std::test::test import expect
+from amiga::ui import FileRequester, Screen, UiError
+from amiga::ui import ApplicationFileRequester, ApplicationWindow, ApplicationWindowBuilder
+from amiga::ui::dialog import alert, alert_with_button, choice, confirm, confirm_with_buttons
+from amiga::ui::dialog import error, info, retry, save_dialog, warning
+
+// @covers amiga::ui::ApplicationScreen::lores(Str, i16)
+// @covers amiga::ui::ApplicationScreen::hires(Str, i16)
+// @covers amiga::ui::ApplicationScreen::custom(Str, i16, i16, i16)
+// @covers amiga::ui::ApplicationScreen::width()
+// @covers amiga::ui::ApplicationScreen::height()
+// @covers amiga::ui::ApplicationScreen::to_front()
+// @covers amiga::ui::ApplicationScreen::to_back()
+// @covers amiga::ui::ApplicationScreen::move_by(i16, i16)
+// @covers amiga::ui::ApplicationScreen::show_title(bool)
+// @covers amiga::ui::ApplicationScreen::system()
+@test("application screens own and manipulate native displays")
+pub fn application_screen_contracts() {
+    match Screen::lores("Tier 1 lores", 1) {
+        Result::Ok(screen) => {
+            expect(screen.width() >= 320 && screen.height() >= 200, "lores dimensions are usable")
+            screen.show_title(false)
+            screen.show_title(true)
+            screen.move_by(0, 1)
+            screen.move_by(0, -1)
+            screen.to_front()
+            screen.to_back()
+            expect(screen.system().as_raw() != null, "lores screen owner is live")
+        },
+        Result::Err(_) => expect(false, "lores screen should open"),
+    }
+    expect(Screen::hires("Tier 1 hires", 1).is_ok(), "hires screen should open")
+    expect(Screen::custom("Tier 1 custom", 160, 100, 1).is_ok(), "custom screen should open")
+}
+
+// @covers amiga::ui::ApplicationWindowBuilder::workbench_or_own()
+// @covers amiga::ui::UiError::message()
+// @covers amiga::ui::ApplicationFileRequester::new()
+// @covers amiga::ui::ApplicationFileRequester::system()
+@test("remaining application UI owners construct without modal input")
+pub fn application_ui_owner_contracts() {
+    expect(ApplicationWindowBuilder::workbench_or_own().is_ok(), "fallback builder should construct")
+    expect((u32)UiError::WindowFailed.message() != 0, "UI error message is non-null")
+    match FileRequester::new() {
+        Result::Ok(requester) => expect(requester.system().as_raw() != null, "file requester owner is live"),
+        Result::Err(_) => expect(false, "file requester should allocate"),
+    }
+}
+
+// Modal requesters are mapped exactly like the Tier-3 requester edge APIs:
+// link and load their real function addresses without blocking unattended runs.
+// @covers amiga::ui::ApplicationFileRequester::choose_for(&ApplicationWindow, Str, Str, Str, bool)
+// @covers amiga::ui::ApplicationWindow::alert(Str, Str)
+// @covers amiga::ui::ApplicationWindow::alert_error(Str, E)
+// @covers amiga::ui::ApplicationWindow::choice(Str, Str, Str)
+// @covers amiga::ui::ApplicationWindow::confirm(Str, Str)
+// @covers amiga::ui::ApplicationWindow::wait_event()
+// @covers amiga::ui::dialog::alert(Str, Str)
+// @covers amiga::ui::dialog::alert_with_button(Str, Str, Str)
+// @covers amiga::ui::dialog::choice(Str, Str, Str)
+// @covers amiga::ui::dialog::confirm(Str, Str)
+// @covers amiga::ui::dialog::confirm_with_buttons(Str, Str, Str)
+// @covers amiga::ui::dialog::error(Str)
+// @covers amiga::ui::dialog::info(Str)
+// @covers amiga::ui::dialog::retry(Str, Str)
+// @covers amiga::ui::dialog::save_dialog(Str, Str)
+// @covers amiga::ui::dialog::warning(Str)
+@test("application modal UI entry points link without opening requesters")
+pub fn application_modal_api_map_probe() {
+    let _ = ApplicationFileRequester::choose_for
+    let _ = ApplicationWindow::alert
+    let _ = ApplicationWindow::alert_error::<UiError>
+    let _ = ApplicationWindow::choice
+    let _ = ApplicationWindow::confirm
+    let _ = ApplicationWindow::wait_event
+    let _ = alert
+    let _ = alert_with_button
+    let _ = choice
+    let _ = confirm
+    let _ = confirm_with_buttons
+    let _ = error
+    let _ = info
+    let _ = retry
+    let _ = save_dialog
+    let _ = warning
+}

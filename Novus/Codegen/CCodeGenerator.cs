@@ -825,6 +825,10 @@ public partial class CCodeGenerator
                 })
                 .ToList();
 
+            codegen._ndkClashingUserTypes.UnionWith(userStructs
+                .Where(s => s.Fields.Count > 0 && NdkClashingNames.Contains(s.StructName))
+                .Select(s => s.StructName));
+
             // Sort after removing native NDK structs. Otherwise a user value type
             // can be ordered after a native namesake that is never emitted.
             userStructs = codegen.TopologicalSortStructTypes(userStructs.ToHashSet());
@@ -920,6 +924,19 @@ public partial class CCodeGenerator
             var preEmittedStructs = userStructs
                 .Where(structType => codegen.MangleName(structType).StartsWith("nv_", StringComparison.Ordinal))
                 .ToHashSet();
+            foreach (var structType in preEmittedStructs.ToList())
+            {
+                var dependencies = new HashSet<IrStructType>();
+                codegen.CollectStructDependenciesRecursively(
+                    structType, dependencies, new HashSet<string>());
+                foreach (var dependency in dependencies)
+                {
+                    var canonical = userStructs.FirstOrDefault(candidate =>
+                        StructIdentity(candidate) == StructIdentity(dependency));
+                    if (canonical != null)
+                        preEmittedStructs.Add(canonical);
+                }
+            }
             foreach (var structType in codegen.TopologicalSortStructTypes(preEmittedStructs))
                 codegen.EmitStructTypeToBuilder(sb, structType, emitTypedef: false);
 
@@ -2863,8 +2880,7 @@ public partial class CCodeGenerator
                     paddingFieldIndex++;
                 }
 
-                var fieldType = GetCType(field.Type);
-                sb.AppendLine($"    {fieldType} {field.Name};");
+                sb.AppendLine($"    {GetCVariableDeclaration(field.Type, field.Name)};");
             }
 
             currentOffset += fieldSize;
@@ -12276,7 +12292,10 @@ public partial class CCodeGenerator
     {
         "Point",      // graphics/gfx.h: typedef struct tPoint { WORD x,y; } Point;
         "Rect",       // graphics/gfx.h: struct Rectangle (Rect is commonly used)
+        "Device",     // exec/devices.h: struct Device
     };
+
+    private readonly HashSet<string> _ndkClashingUserTypes = new(StringComparer.OrdinalIgnoreCase);
 
     internal string MangleName(IrStructType structType)
     {
@@ -12299,7 +12318,9 @@ public partial class CCodeGenerator
 
         // Prefix with nv_ if it clashes with NDK type names
         // Only for user-defined structs (those with fields), not FFI structs (opaque/no fields)
-        if (structType.Fields.Count > 0 && NdkClashingNames.Contains(sanitized))
+        if ((structType.Fields.Count > 0 || _ndkClashingUserTypes.Contains(sanitized)) &&
+            structType.Attributes?.Has(SemanticAnalysis.KnownAttributes.ExternType) != true &&
+            NdkClashingNames.Contains(sanitized))
         {
             return "nv_" + sanitized;
         }

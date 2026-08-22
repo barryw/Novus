@@ -12,37 +12,37 @@ from std::core import Option
 
 /// A 2D point with x and y coordinates.
 /// Uses i16 to match AmigaOS graphics functions.
-pub struct Point {
+pub struct SystemPoint {
     /// The x value stored by `Point`.
     x: i16,
     /// The y value stored by `Point`.
     y: i16,
 }
 
-impl Point {
+impl SystemPoint {
     /// Create a new point at the given coordinates.
     pub fn new(x: i16, y: i16) -> Point {
-        return Point { x: x, y: y }
+        return SystemPoint { x: x, y: y }
     }
 
     /// Create a point at the origin (0, 0).
     pub fn zero() -> Point {
-        return Point { x: 0, y: 0 }
+        return SystemPoint { x: 0, y: 0 }
     }
 
     /// Create a new point offset from this one.
     pub fn offset(&self, dx: i16, dy: i16) -> Point {
-        return Point { x: self.x + dx, y: self.y + dy }
+        return SystemPoint { x: self.x + dx, y: self.y + dy }
     }
 
     /// Add another point to this one (vector addition).
     pub fn add(&self, other: &Point) -> Point {
-        return Point { x: self.x + other.x, y: self.y + other.y }
+        return SystemPoint { x: self.x + other.x, y: self.y + other.y }
     }
 
     /// Subtract another point from this one (vector subtraction).
     pub fn sub(&self, other: &Point) -> Point {
-        return Point { x: self.x - other.x, y: self.y - other.y }
+        return SystemPoint { x: self.x - other.x, y: self.y - other.y }
     }
 
     /// Check if this point equals another.
@@ -50,6 +50,9 @@ impl Point {
         return self.x == other.x && self.y == other.y
     }
 }
+
+/// A 2D point with i16 coordinates.
+pub type Point = SystemPoint
 
 // ============================================================================
 // Rect - Axis-aligned rectangle
@@ -119,17 +122,17 @@ impl Rect {
 
     /// Get the top-left corner as a Point.
     pub fn top_left(&self) -> Point {
-        return Point { x: self.x_min, y: self.y_min }
+        return SystemPoint { x: self.x_min, y: self.y_min }
     }
 
     /// Get the bottom-right corner as a Point.
     pub fn bottom_right(&self) -> Point {
-        return Point { x: self.x_max, y: self.y_max }
+        return SystemPoint { x: self.x_max, y: self.y_max }
     }
 
     /// Get the center point (integer division, may lose precision).
     pub fn center(&self) -> Point {
-        return Point {
+        return SystemPoint {
             x: (self.x_min + self.x_max) / 2,
             y: (self.y_min + self.y_max) / 2
         }
@@ -269,7 +272,7 @@ impl Ellipse {
     /// Create an ellipse with center and separate x/y radii.
     pub fn new(center_x: i16, center_y: i16, radius_x: i16, radius_y: i16) -> Ellipse {
         return Ellipse {
-            center: Point { x: center_x, y: center_y },
+            center: SystemPoint { x: center_x, y: center_y },
             radius_x: radius_x,
             radius_y: radius_y
         }
@@ -287,7 +290,7 @@ impl Ellipse {
     /// Create a circle (equal x and y radii).
     pub fn circle(center_x: i16, center_y: i16, radius: i16) -> Ellipse {
         return Ellipse {
-            center: Point { x: center_x, y: center_y },
+            center: SystemPoint { x: center_x, y: center_y },
             radius_x: radius,
             radius_y: radius
         }

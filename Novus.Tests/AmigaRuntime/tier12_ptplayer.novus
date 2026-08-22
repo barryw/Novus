@@ -1,0 +1,127 @@
+from std::core import Result
+from std::test::test import expect
+from amiga::sys::hardware::chipset import DISPLAY, DisplayType
+from amiga::sys::hardware::ptplayer import AudioAsset, AudioSample, ModAsset, ModPlayer
+from amiga::sys::hardware::ptplayer import PlayConfig, SfxStructure
+
+@embed("beep.wav")
+static BEEP_CHIP: AudioSample = []
+
+@embed("beep.wav", chip = false)
+static BEEP_FAST: AudioAsset = []
+
+@embed("GSLINGER.MOD", chip = false)
+static MUSIC: [u8] = []
+
+@test("ptplayer installs and removes its CIA timing interrupt")
+pub fn ptplayer_cia_lifecycle() {
+    let pal = DISPLAY() == DisplayType::PAL
+    let player = ModPlayer::new(pal)
+    expect(player.is_ok(), "CIA timing installs")
+}
+
+// @covers amiga::sys::hardware::ptplayer::SfxStructure::new(*u8, u16, u16, u16, i8, i8)
+// @covers amiga::sys::hardware::ptplayer::SfxStructure::from_sample(&AudioSample, i8, i8)
+// @covers amiga::sys::hardware::ptplayer::SfxStructure::from_sample_native(&AudioSample, i8, i8, bool)
+// @covers amiga::sys::hardware::ptplayer::ModAsset::new(*u8, u32)
+// @covers amiga::sys::hardware::ptplayer::ModAsset::as_chip_ptr()
+// @covers amiga::sys::hardware::ptplayer::AudioAsset::new(*u8, u32, u32, u16, u16)
+// @covers amiga::sys::hardware::ptplayer::AudioAsset::as_chip_ptr()
+// @covers amiga::sys::hardware::ptplayer::AudioAsset::sample_rate()
+// @covers amiga::sys::hardware::ptplayer::AudioAsset::period_pal()
+// @covers amiga::sys::hardware::ptplayer::AudioAsset::period_ntsc()
+// @covers amiga::sys::hardware::ptplayer::AudioAsset::size()
+// @covers amiga::sys::hardware::ptplayer::AudioAsset::length_words()
+// @covers amiga::sys::hardware::ptplayer::AudioAsset::data_ptr()
+// @covers amiga::sys::hardware::ptplayer::PlayConfig::none()
+@test("ptplayer assets retain playback metadata and reach chip RAM")
+pub fn ptplayer_asset_contracts() {
+    expect(SfxStructure::new(null, 8, 322, 64, -1, 0).is_err(), "null SFX is rejected")
+    expect(SfxStructure::new(BEEP_FAST.data_ptr(), 8, 322, 64, -1, 0).is_ok(), "valid SFX metadata is accepted")
+    expect(SfxStructure::from_sample(&BEEP_CHIP, -1, 0).is_ok(), "embedded sample becomes an SFX")
+    expect(SfxStructure::from_sample_native(&BEEP_CHIP, 0, 0, true).is_ok(), "native-rate SFX is accepted")
+
+    let mod_asset = ModAsset::new(MUSIC.data, MUSIC.size)
+    expect(mod_asset.as_chip_ptr().is_ok(), "MOD data reaches chip RAM")
+    let audio_asset = AudioAsset::new(BEEP_FAST.data_ptr(), BEEP_FAST.size(), BEEP_FAST.sample_rate(),
+        BEEP_FAST.period_pal(), BEEP_FAST.period_ntsc())
+    expect(audio_asset.data_ptr() == BEEP_FAST.data_ptr(), "audio pointer is retained")
+    expect(audio_asset.size() == BEEP_FAST.size() && audio_asset.length_words() > 0, "audio length is retained")
+    expect(audio_asset.sample_rate() > 0 && audio_asset.period_pal() > 0 && audio_asset.period_ntsc() > 0,
+        "audio timing is retained")
+    expect(audio_asset.as_chip_ptr().is_ok(), "audio data reaches chip RAM")
+    let _ = PlayConfig::none()
+}
+
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::new(bool)
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::init(*u8, u8)
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::init_asset(&ModAsset, u8)
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::play()
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::play_with_config(&PlayConfig)
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::tick()
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::pause()
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::stop()
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::is_playing()
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::set_master_volume(u16)
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::set_music_mask(u8)
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::play_sfx(&SfxStructure)
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::play_looped_sfx(&SfxStructure)
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::stop_sfx(u8)
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::set_sample_volume(u16, u8)
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::e8_trigger()
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::song_end()
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::is_finished()
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::set_single_play(bool)
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::vumeter()
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::peek_vumeter()
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::music_channel_count()
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::song_position()
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::song_length()
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::progress()
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::tick_music()
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::set_on_e8_trigger(u32)
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::set_on_vumeter(u32)
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::set_on_song_end(u32)
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::poll()
+// @covers amiga::sys::hardware::ptplayer::ModPlayer::reset_callback_state()
+@test("ptplayer controls a real embedded module and sound effect")
+pub fn ptplayer_runtime_contracts() {
+    let pal = DISPLAY() == DisplayType::PAL
+    var player = ModPlayer::new(pal).unwrap()
+    expect(player.init(null, 0).is_err(), "null module is rejected")
+    let asset = ModAsset::new(MUSIC.data, MUSIC.size)
+    expect(player.init_asset(&asset, 0).is_ok(), "embedded module initializes")
+    expect(player.set_master_volume(65).is_err() && player.set_master_volume(32).is_ok(), "master volume is validated")
+    expect(player.set_music_mask(16).is_err() && player.set_music_mask(0).is_ok(), "music channel mask is validated")
+    expect(player.set_sample_volume(0, 32).is_err() && player.set_sample_volume(1, 32).is_ok(), "sample volume is validated")
+
+    player.set_on_e8_trigger(0)
+    player.set_on_vumeter(0)
+    player.set_on_song_end(0)
+    player.reset_callback_state()
+    player.poll()
+    player.tick()
+    player.tick_music()
+    player.set_single_play(false)
+    player.play()
+    expect(player.is_playing(), "module playback starts")
+    let _ = player.e8_trigger()
+    let _ = player.song_end()
+    let _ = player.vumeter()
+    expect(player.peek_vumeter() <= 15, "VU meter is a four-channel mask")
+    expect(player.music_channel_count() <= 4, "music channel count is bounded")
+    expect(player.song_position() < 128 && player.song_length() > 0 && player.progress() <= 100,
+        "song position and progress are bounded")
+    player.pause()
+    expect(!player.is_playing(), "module playback pauses")
+    let config = PlayConfig::none()
+    player.play_with_config(&config)
+    expect(player.is_playing(), "configured playback starts")
+
+    let sfx = SfxStructure::from_sample_native(&BEEP_CHIP, 0, 0, pal).unwrap()
+    let _ = player.play_sfx(&sfx)
+    player.play_looped_sfx(&sfx)
+    expect(player.stop_sfx(4).is_err() && player.stop_sfx(0).is_ok(), "SFX channel is validated and stopped")
+    player.stop()
+    expect(!player.is_playing() && player.is_finished(), "module playback stops")
+}

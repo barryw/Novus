@@ -1,15 +1,48 @@
 from std::core import Result
 from std::test::test import expect
-from amiga::capabilities import SystemLibrary, library_available
+from amiga::capabilities import CapabilityError, SystemLibrary, library_available
 
-@test("installed libraries report their actual version")
-pub fn installed_library_is_available() {
+// @covers amiga::capabilities::CapabilityError::message()
+@test("application capability errors expose stable text")
+pub fn capability_error_message() {
+    let message = CapabilityError::Unavailable.message()
+    unsafe { expect(message != null && message[0] == (u8)'T', "capability error is descriptive") }
+}
+
+// @covers amiga::capabilities::SystemLibrary::open(Str, u32)
+@test("application capabilities open an installed library")
+pub fn system_library_open() {
+    expect(SystemLibrary::open("dos.library", 36).is_ok(), "DOS 2.0+ opens")
+}
+
+// @covers amiga::capabilities::SystemLibrary::version()
+@test("application capabilities report the installed library version")
+pub fn system_library_version() {
     match SystemLibrary::open("dos.library", 36) {
         Result::Ok(library) => expect(library.version() >= 36, "DOS 2.0+ is installed"),
         Result::Err(_) => expect(false, "DOS library opens"),
     }
 }
 
+// @covers amiga::capabilities::SystemLibrary::revision()
+@test("application capabilities report the installed library revision")
+pub fn system_library_revision() {
+    match SystemLibrary::open("dos.library", 36) {
+        Result::Ok(library) => expect(library.revision() > 0, "installed DOS revision is nonzero"),
+        Result::Err(_) => expect(false, "DOS library opens"),
+    }
+}
+
+// @covers amiga::capabilities::SystemLibrary::system()
+@test("application capabilities expose their owning system handle")
+pub fn system_library_system() {
+    match SystemLibrary::open("dos.library", 36) {
+        Result::Ok(library) => expect(library.system().as_raw() != null, "system handle is live"),
+        Result::Err(_) => expect(false, "DOS library opens"),
+    }
+}
+
+// @covers amiga::capabilities::library_available(Str, u32)
 @test("missing optional libraries are recoverable")
 pub fn missing_library_is_unavailable() {
     expect(!library_available("novus-missing.library", 1), "missing library returns false")

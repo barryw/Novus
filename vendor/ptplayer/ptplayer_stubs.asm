@@ -20,7 +20,7 @@
     xref    __mt_remove_cia
     xref    __mt_init
     xref    __mt_end
-    xref    __mt_music
+    xref    __mt_music_c
     xref    __mt_playfx
     xref    __mt_loopfx
     xref    __mt_stopfx
@@ -94,10 +94,12 @@ ___novus_mt_end:
 ; Stack: 4(sp)=custom
 ; Registers: a6=custom
 ___novus_mt_music:
-    movem.l a6,-(sp)
-    move.l  8(sp),a6            ; custom -> a6
-    jsr     __mt_music
-    movem.l (sp)+,a6
+    ; The interrupt entry saves every working register. A normal C caller does
+    ; not, so preserve every callee-saved register used by the replayer.
+    movem.l d2-d7/a2-a6,-(sp)
+    move.l  48(sp),a6           ; custom -> a6
+    jsr     __mt_music_c
+    movem.l (sp)+,d2-d7/a2-a6
     rts
 
 ; void* __novus_mt_playfx(void* custom, void* sfx)

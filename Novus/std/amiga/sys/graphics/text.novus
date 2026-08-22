@@ -176,7 +176,7 @@ pub fn get_text_style(rp: *RastPort) -> u32 {
     if !rp {
         return 0
     }
-    return AskSoftStyle(rp)
+    return (u32)unsafe { (*rp).AlgoStyle }
 }
 
 /// Enable bold text.
@@ -184,7 +184,7 @@ pub fn set_bold(rp: *RastPort, enabled: bool) {
     if !rp {
         return
     }
-    let current: u32 = AskSoftStyle(rp)
+    let current: u32 = get_text_style(rp)
     if enabled {
         SetSoftStyle(rp, current | STYLE_BOLD, $FFFF)
     } else {
@@ -199,7 +199,7 @@ pub fn set_italic(rp: *RastPort, enabled: bool) {
     if !rp {
         return
     }
-    let current: u32 = AskSoftStyle(rp)
+    let current: u32 = get_text_style(rp)
     if enabled {
         SetSoftStyle(rp, current | STYLE_ITALIC, $FFFF)
     } else {
@@ -214,7 +214,7 @@ pub fn set_underline(rp: *RastPort, enabled: bool) {
     if !rp {
         return
     }
-    let current: u32 = AskSoftStyle(rp)
+    let current: u32 = get_text_style(rp)
     if enabled {
         SetSoftStyle(rp, current | STYLE_UNDERLINED, $FFFF)
     } else {

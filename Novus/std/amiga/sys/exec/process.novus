@@ -294,21 +294,13 @@ impl ProcessBuilder {
             idx++
         }
 
-        // Close flags
-        if self.close_input {
-            self.set_tag(tag_ptr, idx, NP_CloseInput, 1)
-            idx++
-        }
-
-        if self.close_output {
-            self.set_tag(tag_ptr, idx, NP_CloseOutput, 1)
-            idx++
-        }
-
-        if self.close_error {
-            self.set_tag(tag_ptr, idx, NP_CloseError, 1)
-            idx++
-        }
+        // Boolean tags must be explicit: several AmigaDOS defaults are true.
+        self.set_tag(tag_ptr, idx, NP_CloseInput, if self.close_input { 1 } else { 0 })
+        idx++
+        self.set_tag(tag_ptr, idx, NP_CloseOutput, if self.close_output { 1 } else { 0 })
+        idx++
+        self.set_tag(tag_ptr, idx, NP_CloseError, if self.close_error { 1 } else { 0 })
+        idx++
 
         // Directory locks
         if self.current_dir != 0 {
@@ -322,15 +314,10 @@ impl ProcessBuilder {
         }
 
         // Other options
-        if self.copy_vars {
-            self.set_tag(tag_ptr, idx, NP_CopyVars, 1)
-            idx++
-        }
-
-        if self.is_cli {
-            self.set_tag(tag_ptr, idx, NP_Cli, 1)
-            idx++
-        }
+        self.set_tag(tag_ptr, idx, NP_CopyVars, if self.copy_vars { 1 } else { 0 })
+        idx++
+        self.set_tag(tag_ptr, idx, NP_Cli, if self.is_cli { 1 } else { 0 })
+        idx++
 
         if (u32)self.window_ptr != 0 {
             self.set_tag(tag_ptr, idx, NP_WindowPtr, (u32)self.window_ptr)
@@ -342,15 +329,10 @@ impl ProcessBuilder {
             idx++
         }
 
-        if self.notify_on_death {
-            self.set_tag(tag_ptr, idx, NP_NotifyOnDeath, 1)
-            idx++
-        }
-
-        if self.synchronous {
-            self.set_tag(tag_ptr, idx, NP_Synchronous, 1)
-            idx++
-        }
+        self.set_tag(tag_ptr, idx, NP_NotifyOnDeath, if self.notify_on_death { 1 } else { 0 })
+        idx++
+        self.set_tag(tag_ptr, idx, NP_Synchronous, if self.synchronous { 1 } else { 0 })
+        idx++
 
         // Terminate tag list (TAG_DONE = 0)
         self.set_tag(tag_ptr, idx, 0, 0)

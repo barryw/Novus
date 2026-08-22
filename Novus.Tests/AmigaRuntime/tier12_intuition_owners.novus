@@ -1,0 +1,222 @@
+from std::core import Option
+from std::test::test import expect
+from amiga::raw::consts import CUSTOMSCREEN, IDCMP_CLOSEWINDOW, IDCMP_REFRESHWINDOW, MEMF_CLEAR, MEMF_PUBLIC, OSCAN_TEXT, PAL_MONITOR_ID, NTSC_MONITOR_ID, SA_Depth, SA_Height, SA_Title, SA_Type, SA_Width, TAG_DONE, WA_Height, WA_IDCMP, WA_Title, WA_Width, WFLG_ACTIVATE, WFLG_BORDERLESS, WFLG_CLOSEGADGET, WFLG_DEPTHGADGET, WFLG_DRAGBAR, WFLG_SIZEGADGET
+from amiga::raw::exec import AllocVec, CreateMsgPort, DeleteMsgPort, FreeVec, GetMsg, PutMsg, WaitPort
+from amiga::raw::intuition import CloseScreen, CloseWindow
+from amiga::raw::structs import IntuiMessage, Message, Screen, TagItem, Window
+from amiga::sys::hardware::chipset import DISPLAY, DisplayType
+from amiga::sys::intuition::screen import ScreenBuilder, ScreenHandle
+from amiga::sys::intuition::window import RefreshGuard, WindowBuilder, WindowEvent, WindowHandle, open_screen, open_window
+
+// @covers amiga::sys::intuition::screen::ScreenBuilder::autoscroll(bool)
+// @covers amiga::sys::intuition::screen::ScreenBuilder::behind(bool)
+// @covers amiga::sys::intuition::screen::ScreenBuilder::build()
+// @covers amiga::sys::intuition::screen::ScreenBuilder::depth(i16)
+// @covers amiga::sys::intuition::screen::ScreenBuilder::display_id(u32)
+// @covers amiga::sys::intuition::screen::ScreenBuilder::height(i16)
+// @covers amiga::sys::intuition::screen::ScreenBuilder::new()
+// @covers amiga::sys::intuition::screen::ScreenBuilder::overscan(u32)
+// @covers amiga::sys::intuition::screen::ScreenBuilder::quiet(bool)
+// @covers amiga::sys::intuition::screen::ScreenBuilder::show_title(bool)
+// @covers amiga::sys::intuition::screen::ScreenBuilder::size(i16, i16)
+// @covers amiga::sys::intuition::screen::ScreenBuilder::title(Str)
+// @covers amiga::sys::intuition::screen::ScreenBuilder::width(i16)
+// @covers amiga::sys::intuition::screen::ScreenHandle::as_raw()
+// @covers amiga::sys::intuition::screen::ScreenHandle::bitmap()
+// @covers amiga::sys::intuition::screen::ScreenHandle::custom(Str, i16, i16, i16)
+// @covers amiga::sys::intuition::screen::ScreenHandle::from_raw(*Screen)
+// @covers amiga::sys::intuition::screen::ScreenHandle::height()
+// @covers amiga::sys::intuition::screen::ScreenHandle::hires(Str, i16)
+// @covers amiga::sys::intuition::screen::ScreenHandle::hires_lace(Str, i16)
+// @covers amiga::sys::intuition::screen::ScreenHandle::into_raw()
+// @covers amiga::sys::intuition::screen::ScreenHandle::lores(Str, i16)
+// @covers amiga::sys::intuition::screen::ScreenHandle::lores_lace(Str, i16)
+// @covers amiga::sys::intuition::screen::ScreenHandle::move_by(i16, i16)
+// @covers amiga::sys::intuition::screen::ScreenHandle::open(Slice<TagItem>)
+// @covers amiga::sys::intuition::screen::ScreenHandle::open_backdrop()
+// @covers amiga::sys::intuition::screen::ScreenHandle::open_window(Str, i16, i16, i16, i16)
+// @covers amiga::sys::intuition::screen::ScreenHandle::show_title(bool)
+// @covers amiga::sys::intuition::screen::ScreenHandle::to_back()
+// @covers amiga::sys::intuition::screen::ScreenHandle::to_front()
+// @covers amiga::sys::intuition::screen::ScreenHandle::viewport()
+// @covers amiga::sys::intuition::screen::ScreenHandle::width()
+// @covers amiga::sys::intuition::window::open_screen(*TagItem)
+@test("screen owners cover constructors, transfer, builders, and AGA depth")
+pub fn screen_owner_contracts() {
+    let display_id = match DISPLAY() { DisplayType::PAL => PAL_MONITOR_ID, DisplayType::NTSC => NTSC_MONITOR_ID }
+    {
+        let screen = ScreenBuilder::new()
+            .title("Tier 2 AGA builder")
+            .size(320, 200)
+            .width(320)
+            .height(200)
+            .depth(8)
+            .behind(false)
+            .quiet(false)
+            .show_title(true)
+            .autoscroll(false)
+            .display_id(display_id)
+            .overscan(OSCAN_TEXT)
+            .build().unwrap()
+        expect(screen.as_raw() != null && screen.width() == 320 && screen.height() == 200, "8-plane AGA screen builder opens")
+        expect(screen.bitmap() != null && screen.viewport() != null, "screen exposes bitmap and viewport")
+        screen.show_title(false)
+        screen.show_title(true)
+        screen.move_by(0, 1)
+        screen.move_by(0, -1)
+        screen.to_front()
+        screen.to_back()
+        expect(screen.open_window("Owned window", 8, 12, 180, 80).is_ok(), "screen opens an owned window")
+        expect(screen.open_backdrop().is_ok(), "screen opens a backdrop")
+    }
+    expect(ScreenHandle::lores("AGA lores", 8).is_ok(), "AGA lores screen opens at 8 planes")
+    expect(ScreenHandle::custom("AGA custom", 160, 100, 8).is_ok(), "AGA custom screen opens at 8 planes")
+    expect(ScreenHandle::hires("AGA hires", 8).is_ok(), "AGA hires screen opens at 8 planes")
+    expect(ScreenHandle::lores_lace("AGA lores lace", 8).is_ok(), "AGA lores interlaced screen opens at 8 planes")
+    expect(ScreenHandle::hires_lace("AGA hires lace", 8).is_ok(), "AGA hires interlaced screen opens at 8 planes")
+    expect(ScreenBuilder::new().depth(9).build().is_err(), "screen depths above the AGA limit are rejected")
+
+    let tags = [
+        TagItem { ti_Tag: SA_Width, ti_Data: 160 },
+        TagItem { ti_Tag: SA_Height, ti_Data: 100 },
+        TagItem { ti_Tag: SA_Depth, ti_Data: 1 },
+        TagItem { ti_Tag: SA_Title, ti_Data: (u32)"Transferred screen".as_cstr() },
+        TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let raw = open_screen(&tags[0]).unwrap()
+    var owner = ScreenHandle::from_raw(raw).unwrap()
+    let transferred = owner.into_raw()
+    expect(transferred == raw, "screen ownership transfers without closing")
+    CloseScreen(transferred)
+    expect(ScreenHandle::from_raw(null).is_err(), "null screen ownership is rejected")
+    expect(ScreenHandle::open(&tags).is_ok(), "slice-based screen open works")
+}
+
+// @covers amiga::sys::intuition::window::WindowBuilder::activate(bool)
+// @covers amiga::sys::intuition::window::WindowBuilder::backdrop(bool)
+// @covers amiga::sys::intuition::window::WindowBuilder::borderless(bool)
+// @covers amiga::sys::intuition::window::WindowBuilder::build()
+// @covers amiga::sys::intuition::window::WindowBuilder::close_gadget(bool)
+// @covers amiga::sys::intuition::window::WindowBuilder::depth_gadget(bool)
+// @covers amiga::sys::intuition::window::WindowBuilder::drag_bar(bool)
+// @covers amiga::sys::intuition::window::WindowBuilder::gadget_events(bool)
+// @covers amiga::sys::intuition::window::WindowBuilder::idcmp(u32)
+// @covers amiga::sys::intuition::window::WindowBuilder::max_size(i16, i16)
+// @covers amiga::sys::intuition::window::WindowBuilder::menu_events(bool)
+// @covers amiga::sys::intuition::window::WindowBuilder::min_size(i16, i16)
+// @covers amiga::sys::intuition::window::WindowBuilder::mouse_buttons(bool)
+// @covers amiga::sys::intuition::window::WindowBuilder::mouse_move(bool)
+// @covers amiga::sys::intuition::window::WindowBuilder::new()
+// @covers amiga::sys::intuition::window::WindowBuilder::position(i16, i16)
+// @covers amiga::sys::intuition::window::WindowBuilder::raw_keys(bool)
+// @covers amiga::sys::intuition::window::WindowBuilder::refresh_events(bool)
+// @covers amiga::sys::intuition::window::WindowBuilder::resize_events(bool)
+// @covers amiga::sys::intuition::window::WindowBuilder::screen(*Screen)
+// @covers amiga::sys::intuition::window::WindowBuilder::size(i16, i16)
+// @covers amiga::sys::intuition::window::WindowBuilder::size_gadget(bool)
+// @covers amiga::sys::intuition::window::WindowBuilder::title(Str)
+// @covers amiga::sys::intuition::window::WindowBuilder::vanilla_keys(bool)
+// @covers amiga::sys::intuition::window::WindowHandle::app_window(&Str, i16, i16)
+// @covers amiga::sys::intuition::window::WindowHandle::drain_messages()
+// @covers amiga::sys::intuition::window::WindowHandle::from_raw(*Window)
+// @covers amiga::sys::intuition::window::WindowHandle::into_raw()
+// @covers amiga::sys::intuition::window::WindowHandle::open(Slice<TagItem>)
+// @covers amiga::sys::intuition::window::WindowHandle::poll_event()
+// @covers amiga::sys::intuition::window::WindowHandle::refresh_frame()
+// @covers amiga::sys::intuition::window::WindowHandle::set_titles(Option<*u8>, Option<*u8>)
+// @covers amiga::sys::intuition::window::RefreshGuard::window()
+// @covers amiga::sys::intuition::window::open_window(*TagItem)
+@test("window owners cover builders, mutation, polling, and transfer")
+pub fn window_owner_contracts() {
+    let app_title = "Application owner"
+    expect(WindowHandle::app_window(&app_title, 200, 100).is_ok(), "application window opens")
+    {
+        let window = WindowBuilder::new()
+            .title("Builder window")
+            .position(16, 18)
+            .size(220, 110)
+            .min_size(100, 60)
+            .max_size(300, 180)
+            .screen(null)
+            .close_gadget(true)
+            .drag_bar(true)
+            .depth_gadget(true)
+            .size_gadget(true)
+            .borderless(false)
+            .backdrop(false)
+            .activate(true)
+            .mouse_move(true)
+            .mouse_buttons(true)
+            .raw_keys(true)
+            .vanilla_keys(true)
+            .resize_events(true)
+            .refresh_events(true)
+            .menu_events(true)
+            .gadget_events(true)
+            .idcmp(IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW)
+            .build().unwrap()
+        let flags = unsafe { (*window.as_raw()).Flags }
+        expect((flags & (WFLG_CLOSEGADGET | WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_SIZEGADGET | WFLG_ACTIVATE)) != 0, "builder installs requested gadgets")
+        window.set_titles(Option::Some("Renamed"), Option::None)
+        window.refresh_frame()
+        let _ = window.poll_event()
+        // Refresh sessions require genuine Intuition damage; the accessor is
+        // linked here and exercised by the interactive refresh example.
+        let _ = RefreshGuard::window
+        window.drain_messages()
+    }
+    {
+        let cancelled = WindowBuilder::new()
+            .close_gadget(true).close_gadget(false)
+            .mouse_move(true).mouse_move(false)
+            .borderless(true).borderless(false)
+            .activate(false)
+            .build().unwrap()
+        let flags = unsafe { (*cancelled.as_raw()).Flags }
+        expect((flags & (WFLG_CLOSEGADGET | WFLG_BORDERLESS | WFLG_ACTIVATE)) == 0, "false builder setters clear prior state")
+    }
+
+    let tags = [
+        TagItem { ti_Tag: WA_Width, ti_Data: 180 },
+        TagItem { ti_Tag: WA_Height, ti_Data: 80 },
+        TagItem { ti_Tag: WA_Title, ti_Data: (u32)"Transferred window".as_cstr() },
+        TagItem { ti_Tag: WA_IDCMP, ti_Data: IDCMP_CLOSEWINDOW },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let raw = open_window(&tags[0]).unwrap()
+    var owner = WindowHandle::from_raw(raw).unwrap()
+    let transferred = owner.into_raw()
+    expect(transferred == raw, "window ownership transfers without closing")
+    CloseWindow(transferred)
+    expect(WindowHandle::from_raw(null).is_err(), "null window ownership is rejected")
+    expect(WindowHandle::open(&tags).is_ok(), "slice-based window open works")
+}
+
+// @covers amiga::sys::intuition::window::WindowHandle::wait_event()
+@test("window wait_event receives and replies a queued IDCMP event")
+pub fn window_wait_event_contract() {
+    let window = WindowBuilder::new().title("Event window").idcmp(IDCMP_CLOSEWINDOW).build().unwrap()
+    let reply = CreateMsgPort()
+    let memory = AllocVec(@sizeof(IntuiMessage), MEMF_PUBLIC | MEMF_CLEAR)
+    expect(reply != null && memory != null, "message resources allocate")
+    let message = (*IntuiMessage)memory
+    unsafe {
+        (*message).ExecMessage.mn_Node.ln_Type = 5
+        (*message).ExecMessage.mn_ReplyPort = reply
+        (*message).ExecMessage.mn_Length = (u16)@sizeof(IntuiMessage)
+        (*message).Class = IDCMP_CLOSEWINDOW
+        (*message).IDCMPWindow = window.as_raw()
+    }
+    PutMsg(window.user_port(), (*Message)message)
+    var saw_close = false
+    match window.wait_event() {
+        WindowEvent::Close => { saw_close = true },
+        _ => {},
+    }
+    expect(saw_close, "queued close message becomes a close event")
+    WaitPort(reply)
+    expect(GetMsg(reply) == (*Message)message, "wait_event replies the source message")
+    FreeVec(memory)
+    DeleteMsgPort(reply)
+}

@@ -1,8 +1,10 @@
 from std::core import Result
 from amiga::raw::consts import MEMF_ANY
 from amiga::raw::exec import AvailMem
+from amiga::raw::dos import UnLoadSeg
 from std::io::file import write
-from amiga::sys::dos import LoadedSegment
+from amiga::dos import EmbeddedFileSystem
+from amiga::sys::dos import HandlerImage, LoadedFileSegment, LoadedSegment, SegmentError
 from std::test::test import expect
 
 // One four-byte CODE hunk containing RTS.
@@ -16,6 +18,11 @@ static var MINIMAL_HUNK: [u8] = [
 
 // @covers-ndk function|dos.library|InternalLoadSeg
 // @ndk-side-effects Loads a real caller-owned in-memory HUNK through DOS read/allocate/free callbacks, validates the returned BPTR is addressable and contains the exact executable RTS bytes, then releases it
+// @covers amiga::sys::dos::bptr::BPtr::address()
+// @covers amiga::sys::dos::bptr::BPtr::is_addressable()
+// @covers amiga::sys::dos::bptr::BPtr::is_null()
+// @covers amiga::sys::dos::segment::LoadedSegment::from_hunk(Slice<u8>)
+// @covers amiga::sys::dos::segment::LoadedSegment::segment()
 @test("dos.library InternalLoadSeg reconstructs an in-memory HUNK")
 pub fn internal_load_segment() {
     expect(load_and_drop(), "minimal HUNK loads")
@@ -34,6 +41,45 @@ pub fn internal_unload_segment() {
     let after = unsafe { AvailMem(MEMF_ANY) }
     expect(ok, "repeated HUNK loads succeed")
     expect(after == before, "InternalUnLoadSeg releases every hunk")
+}
+
+// @covers amiga::dos::EmbeddedFileSystem::from_system(HandlerImage)
+// @covers amiga::dos::EmbeddedFileSystem::system()
+// @covers amiga::sys::dos::segment::HandlerImage::new(Slice<u8>, i32, u32, i32)
+// @covers amiga::sys::dos::segment::HandlerImage::image()
+// @covers amiga::sys::dos::segment::HandlerImage::global_vec()
+// @covers amiga::sys::dos::segment::HandlerImage::stack_size()
+// @covers amiga::sys::dos::segment::HandlerImage::priority()
+@test("embedded filesystem preserves handler metadata")
+pub fn embedded_filesystem_metadata() {
+    let image = HandlerImage::new(&MINIMAL_HUNK, -1, 4096, 10)
+    let embedded = EmbeddedFileSystem::from_system(image)
+    let system = embedded.system()
+    expect(system.image().len() == 40, "handler bytes are preserved")
+    expect(system.global_vec() == -1, "global vector is preserved")
+    expect(system.stack_size() == 4096, "stack size is preserved")
+    expect(system.priority() == 10, "priority is preserved")
+}
+
+// @covers amiga::sys::dos::segment::LoadedFileSegment::into_raw()
+// @covers amiga::sys::dos::segment::LoadedFileSegment::open(Str)
+// @covers amiga::sys::dos::segment::LoadedFileSegment::segment()
+// @covers amiga::sys::dos::segment::LoadedSegment::from_file(Str)
+// @covers amiga::sys::dos::segment::LoadedSegment::into_raw()
+// @covers amiga::sys::dos::segment::SegmentError::message()
+@test("owned file segments load, expose, transfer, and unload exact DOS images")
+pub fn file_segment_ownership() {
+    expect(LoadedSegment::from_file("RAM:missing-novus-segment").is_err(), "missing segment fails")
+    expect(SegmentError::LoadFailed.message() != null, "segment errors have messages")
+    let owned = LoadedSegment::from_file("C:List").unwrap()
+    expect(owned.segment().is_addressable(), "owned segment is addressable")
+    let raw = owned.into_raw()
+    expect(raw.is_addressable(), "transferred segment stays addressable")
+    UnLoadSeg((i32)raw.as_raw())
+    let file = LoadedFileSegment::open("C:List").unwrap()
+    expect(file.segment().is_addressable(), "file segment is addressable")
+    let file_raw = file.into_raw()
+    UnLoadSeg((i32)file_raw.as_raw())
 }
 
 fn load_and_drop() -> bool {

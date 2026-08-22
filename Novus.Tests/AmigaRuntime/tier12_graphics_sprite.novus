@@ -1,0 +1,135 @@
+from std::test::test import expect
+from amiga::sys::graphics::palette import Color, RED, GREEN, BLUE
+from amiga::sys::graphics::sprite import AttachedSpriteData, AttachedSpriteHandle, SpriteData, SpriteHandle, clear_sprite_collisions, detect_display_mode, init_sprite_system, is_channel_free, read_sprite_collisions, release_all_sprites
+from amiga::sys::hardware::chipset import CHIPSET, SystemChipset
+
+// @covers amiga::sys::graphics::sprite::SpriteData::as_ptr()
+// @covers amiga::sys::graphics::sprite::SpriteData::from_raw(*u16, u32)
+// @covers amiga::sys::graphics::sprite::SpriteData::from_raw_width(*u16, u32, u16)
+// @covers amiga::sys::graphics::sprite::SpriteData::height()
+// @covers amiga::sys::graphics::sprite::SpriteData::width()
+// @covers amiga::sys::graphics::sprite::SpriteHandle::alloc(u8)
+// @covers amiga::sys::graphics::sprite::SpriteHandle::check_collision_with(u8)
+// @covers amiga::sys::graphics::sprite::SpriteHandle::get_collisions(*u8, u32)
+// @covers amiga::sys::graphics::sprite::SpriteHandle::hide()
+// @covers amiga::sys::graphics::sprite::SpriteHandle::is_on_screen()
+// @covers amiga::sys::graphics::sprite::SpriteHandle::is_visible()
+// @covers amiga::sys::graphics::sprite::SpriteHandle::move_by(i16, i16)
+// @covers amiga::sys::graphics::sprite::SpriteHandle::move_to(i16, i16)
+// @covers amiga::sys::graphics::sprite::SpriteHandle::position()
+// @covers amiga::sys::graphics::sprite::SpriteHandle::release()
+// @covers amiga::sys::graphics::sprite::SpriteHandle::set_colors(&[Color; 3])
+// @covers amiga::sys::graphics::sprite::SpriteHandle::set_image(&SpriteData)
+// @covers amiga::sys::graphics::sprite::SpriteHandle::show(&SpriteData, i16, i16)
+// @covers amiga::sys::graphics::sprite::clear_sprite_collisions()
+// @covers amiga::sys::graphics::sprite::detect_display_mode()
+// @covers amiga::sys::graphics::sprite::init_sprite_system()
+// @covers amiga::sys::graphics::sprite::is_channel_free(u8)
+// @covers amiga::sys::graphics::sprite::read_sprite_collisions()
+// @covers amiga::sys::graphics::sprite::release_all_sprites()
+@test("hardware sprites validate data, switch AGA fetch widths, move, hide, and release")
+pub fn sprite_data_and_channel_contracts() {
+    release_all_sprites()
+    init_sprite_system()
+    detect_display_mode()
+    expect(CHIPSET() == SystemChipset::AGA, "A1200/A4000 sprite gate runs on AGA")
+    expect(SpriteHandle::alloc(8).is_err() && !is_channel_free(8), "sprite channels are bounded")
+    expect(SpriteData::from_raw(null, 0).is_err(), "null sprite data is rejected")
+
+    var raw16: [u16] = [0, 0, $FFFF, 0, 0, 0]
+    var bad_terminator: [u16] = [0, 0, $FFFF, 0, 1, 0]
+    var raw32: [u16; 12] = @zeroed([u16; 12])
+    var raw64: [u16; 24] = @zeroed([u16; 24])
+    raw32[4] = $FFFF
+    raw64[8] = $FFFF
+    expect(SpriteData::from_raw(&bad_terminator[0], 6).is_err(), "sprite terminator is validated")
+    expect(SpriteData::from_raw_width(&raw64[0], 24, 48).is_err(), "sprite fetch width is validated")
+
+    {
+        let data16 = SpriteData::from_raw(&raw16[0], 6).unwrap()
+        let data32 = SpriteData::from_raw_width(&raw32[0], 12, 32).unwrap()
+        let data64 = SpriteData::from_raw_width(&raw64[0], 24, 64).unwrap()
+        expect(data16.as_ptr() != null && data16.height() == 1 && data16.width() == 16, "16-pixel sprite layout is retained")
+        expect(data32.height() == 1 && data32.width() == 32, "32-pixel AGA sprite layout is retained")
+        expect(data64.height() == 1 && data64.width() == 64, "64-pixel AGA sprite layout is retained")
+
+        var sprite = SpriteHandle::alloc(6).unwrap()
+        expect(!is_channel_free(6) && SpriteHandle::alloc(6).is_err(), "allocated channels cannot be reused")
+        let colors = [RED, GREEN, BLUE]
+        expect(sprite.set_colors(&colors).is_ok(), "three sprite colors install")
+        expect(sprite.show(&data64, 24, 24).is_ok(), "64-pixel AGA sprite shows")
+        expect(sprite.is_visible() && sprite.is_on_screen(), "64-pixel sprite is active")
+        expect(sprite.move_by(3, 4).is_ok(), "sprite moves relatively")
+        expect(sprite.move_to(40, 36).is_ok(), "sprite moves absolutely")
+        let (x, y) = sprite.position()
+        expect(x == 40 && y == 36, "sprite position is retained")
+        expect(sprite.set_image(&data32).is_ok(), "visible sprite changes to 32-pixel data")
+        expect(!sprite.check_collision_with(8), "invalid collision channel is rejected")
+        let collision_count = sprite.get_collisions(null, 0)
+        expect(collision_count <= 6, "pair collision query is bounded")
+        let _latches = read_sprite_collisions()
+        clear_sprite_collisions()
+        expect(sprite.hide().is_ok() && !sprite.is_visible() && !sprite.is_on_screen(), "sprite hides off screen")
+        expect(sprite.set_image(&data16).is_ok(), "hidden sprite image changes")
+        expect(sprite.show(&data16, 12, 12).is_ok(), "16-pixel compatibility mode is restored")
+        sprite.release()
+        expect(is_channel_free(6) && sprite.move_to(1, 1).is_err(), "released handle rejects use")
+    }
+    release_all_sprites()
+}
+
+// @covers amiga::sys::graphics::sprite::AttachedSpriteData::from_raw(*u16, u32)
+// @covers amiga::sys::graphics::sprite::AttachedSpriteData::from_raw_width(*u16, u32, u16)
+// @covers amiga::sys::graphics::sprite::AttachedSpriteData::from_sprites(SpriteData, SpriteData)
+// @covers amiga::sys::graphics::sprite::AttachedSpriteData::height()
+// @covers amiga::sys::graphics::sprite::AttachedSpriteData::width()
+// @covers amiga::sys::graphics::sprite::AttachedSpriteHandle::alloc_pair(u8)
+// @covers amiga::sys::graphics::sprite::AttachedSpriteHandle::channels()
+// @covers amiga::sys::graphics::sprite::AttachedSpriteHandle::hide()
+// @covers amiga::sys::graphics::sprite::AttachedSpriteHandle::move_to(i16, i16)
+// @covers amiga::sys::graphics::sprite::AttachedSpriteHandle::set_colors(&[Color; 15])
+// @covers amiga::sys::graphics::sprite::AttachedSpriteHandle::set_image(&AttachedSpriteData)
+// @covers amiga::sys::graphics::sprite::AttachedSpriteHandle::show(&AttachedSpriteData, i16, i16)
+@test("attached sprites deinterleave all AGA widths and preserve attached mode")
+pub fn attached_sprite_contracts() {
+    release_all_sprites()
+    expect(AttachedSpriteHandle::alloc_pair(1).is_err(), "attached pair starts on an even channel")
+    expect(AttachedSpriteData::from_raw(null, 0).is_err(), "null attached data is rejected")
+
+    var raw16: [u16] = [0, 0, $FFFF, 0, 0, $FFFF, 0, 0]
+    var raw32: [u16; 16] = @zeroed([u16; 16])
+    var raw64: [u16; 32] = @zeroed([u16; 32])
+    raw32[4] = $FFFF
+    raw32[6] = $FFFF
+    raw64[8] = $FFFF
+    raw64[12] = $FFFF
+
+    {
+        let attached16 = AttachedSpriteData::from_raw(&raw16[0], 8).unwrap()
+        let attached32 = AttachedSpriteData::from_raw_width(&raw32[0], 16, 32).unwrap()
+        let attached64 = AttachedSpriteData::from_raw_width(&raw64[0], 32, 64).unwrap()
+        expect(attached16.height() == 1 && attached16.width() == 16, "16-pixel attached layout is retained")
+        expect(attached32.height() == 1 && attached32.width() == 32, "32-pixel attached layout is retained")
+        expect(attached64.height() == 1 && attached64.width() == 64, "64-pixel attached layout is retained")
+
+        var raw_plane: [u16] = [0, 0, $FFFF, 0, 0, 0]
+        var plane_a = SpriteData::from_raw(&raw_plane[0], 6).unwrap()
+        var plane_b = SpriteData::from_raw(&raw_plane[0], 6).unwrap()
+        let combined = AttachedSpriteData::from_sprites(plane_a, plane_b)
+        expect(combined.is_ok(), "matching regular sprites combine")
+
+        var sprite = AttachedSpriteHandle::alloc_pair(4).unwrap()
+        let (even, odd) = sprite.channels()
+        expect(even == 4 && odd == 5, "attached pair reserves adjacent channels")
+        let colors = [RED; 15]
+        expect(sprite.set_colors(&colors).is_ok(), "fifteen attached colors install")
+        expect(sprite.show(&attached64, 48, 32).is_ok(), "64-pixel attached sprite shows")
+        expect(sprite.move_to(52, 36).is_ok(), "attached sprite moves both channels")
+        expect(sprite.set_image(&attached32).is_ok(), "visible attached sprite changes AGA width safely")
+        expect(sprite.hide().is_ok(), "attached sprite hides both channels")
+        expect(sprite.set_image(&attached16).is_ok(), "hidden attached sprite changes image")
+
+    }
+    expect(is_channel_free(4) && is_channel_free(5), "attached channels release on drop")
+    release_all_sprites()
+}

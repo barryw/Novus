@@ -9,20 +9,22 @@ from amiga::sys::exec::memory::chip_pool import ChipPool
 from std::collections::ringbuffer import RingBuffer
 from amiga::sys::dos import open_file
 from amiga::raw::dos import MODE_OLDFILE
-from std::test::test import expect, expect_true
+from std::test::test import expect
 
+// @covers amiga::sys::exec::memory::allocation::MemHandle::new_chip(u32)
 @test("MemHandle rejects zero-sized allocations")
 pub fn mem_handle_zero_size_error() {
     match MemHandle::new_chip(0) {
-        Result::Err(ExecError::InvalidAddress) => expect_true(true, "typed invalid-size error"),
+        Result::Err(ExecError::InvalidAddress) => {},
         _ => expect(false, "zero-sized MemHandle must fail"),
     }
 }
 
+// @covers amiga::sys::exec::memory::chip_pool::ChipPool::alloc(u32)
 @test("ChipPool rejects zero-sized allocations")
 pub fn chip_pool_zero_size_error() {
     match ChipPool::alloc(0) {
-        Result::Err(ChipCacheError::InvalidSize) => expect_true(true, "typed chip-size error"),
+        Result::Err(ChipCacheError::InvalidSize) => {},
         _ => expect(false, "zero-sized ChipPool allocation must fail"),
     }
 }
@@ -30,22 +32,23 @@ pub fn chip_pool_zero_size_error() {
 @test("RingBuffer reports invalid capacity and overflow")
 pub fn ring_buffer_failure_contracts() {
     match RingBuffer::<i32>::with_capacity(0) {
-        Result::Err(MemoryError::InvalidCapacity) => expect_true(true, "invalid capacity"),
+        Result::Err(MemoryError::InvalidCapacity) => {},
         _ => expect(false, "zero-capacity ring buffer must fail"),
     }
 
     var ring = RingBuffer::<i32>::with_capacity(1).unwrap()
     let _ = ring.push_back(1)
     match ring.push_back(2) {
-        Result::Err(MemoryError::CapacityExceeded) => expect_true(true, "capacity exceeded"),
+        Result::Err(MemoryError::CapacityExceeded) => {},
         _ => expect(false, "full ring buffer must fail"),
     }
 }
 
+// @covers amiga::sys::dos::file::open_file(Str, i32)
 @test("DOS open preserves failure")
 pub fn dos_open_failure_contract() {
     match open_file("RAM:novus-file-that-does-not-exist", MODE_OLDFILE) {
-        Result::Err(_) => expect_true(true, "DOS error preserved"),
+        Result::Err(_) => {},
         Result::Ok(_) => expect(false, "missing file must not open"),
     }
 }

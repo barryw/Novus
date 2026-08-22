@@ -251,7 +251,8 @@ impl ChipCache {
             let _guard = CriticalSection::enter()
             while var i < g_chip_cache.entry_count {
                 if g_chip_cache.entries[i].asset_id == asset_id {
-                    g_chip_cache.entries[i].pin_count++
+                    let entry = &var g_chip_cache.entries[i]
+                    entry.pin_count = entry.pin_count + 1
                     return
                 }
                 i++
@@ -268,8 +269,9 @@ impl ChipCache {
             let _guard = CriticalSection::enter()
             while var i < g_chip_cache.entry_count {
                 if g_chip_cache.entries[i].asset_id == asset_id {
-                    if g_chip_cache.entries[i].pin_count > 0 {
-                        g_chip_cache.entries[i].pin_count--
+                    let entry = &var g_chip_cache.entries[i]
+                    if entry.pin_count > 0 {
+                        entry.pin_count = entry.pin_count - 1
                     }
                     return
                 }

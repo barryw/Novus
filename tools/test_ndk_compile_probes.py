@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from generate_api_docs import function_shape
-from verify_ndk_compile_probes import argument, probe_source
+from verify_ndk_compile_probes import argument, probe_source, shard_modules
 
 
 class NdkCompileProbeTests(unittest.TestCase):
@@ -27,6 +27,12 @@ class NdkCompileProbeTests(unittest.TestCase):
             "extern pub fn Demo(callback: fn() -> u32, size: u32, data: *u8)", "")
         self.assertEqual(["fn() -> u32", "u32", "*u8"],
                          [parameter["type"] for parameter in parameters])
+
+    def test_shards_balance_callable_counts_without_splitting_modules(self):
+        modules = {"large": [{}] * 5, "medium": [{}] * 3, "small": [{}] * 2}
+        shards = shard_modules(modules, 2)
+        self.assertEqual([5, 5], [sum(map(len, shard.values())) for shard in shards])
+        self.assertEqual(set(modules), set().union(*map(set, shards)))
 
 
 if __name__ == "__main__":

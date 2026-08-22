@@ -1,8 +1,9 @@
 // HDPart UI-01 control creation without raw GadTools pointers or tag lists.
 
 from std::core import Option, Result
-from std::test::test import expect_true
+from std::test::test import expect_eq, expect_true
 from amiga::ui import Bounds, UiError, WindowBuilder
+from amiga::graphics import Canvas, DrawMode, Ellipse, Point, Rect
 
 const DRIVER: u16 = 1
 const PARTITIONS: u16 = 2
@@ -10,6 +11,7 @@ const NAME: u16 = 3
 const STATUS: u16 = 4
 const QUIT: u16 = 5
 const BOOTABLE: u16 = 6
+const SIZE: u16 = 7
 
 fn run_ui_controls() -> Result<(), UiError> {
     var ui = WindowBuilder::workbench()?
@@ -23,13 +25,42 @@ fn run_ui_controls() -> Result<(), UiError> {
     ui.add_string(NAME, "Name", Bounds::new(64, 96, 100, 14), "DH0", 31)?
     ui.add_text(STATUS, Bounds::new(12, 122, 180, 12), "Status: RDB OK")?
     ui.add_checkbox(BOOTABLE, "Bootable", Bounds::new(82, 140, 26, 11), false)?
+    ui.add_integer(SIZE, "Size", Bounds::new(130, 140, 58, 11), 10, 10)?
     ui.add_button(QUIT, "Quit", Bounds::new(214, 120, 70, 14))?
+    let _ = ui.system()
 
     var menus = ui.menu_builder()
     var project = menus.add_menu("Project")
-    project.add_item("Quit")
+    let item = project.add_item("Quit")
+    var configured_item = item
+    let keyed_item = configured_item.with_command_key((u8)'Q')
+    var checkable_item = keyed_item
+    let checked_item = checkable_item.with_checkmark()
+    var initially_checked = checked_item
+    let final_item = initially_checked.checked()
+    let _ = final_item.system()
+    project.add_separator()
+    let _ = project.system()
+    let _ = menus.system()
     let menu = menus.build()?
     var window = ui.build("HDPart controls", Bounds::new(40, 30, 304, 162), menu)?
+    let _ = window.system()
+    let _ = window.child_builder()?
+    window.fill_rect(0, 2, 2, 4, 4)
+    window.outline_rect(1, 2, 2, 4, 4)
+    window.set_menu_enabled(0, 0, false)
+    window.set_menu_enabled(0, 0, true)
+    window.refresh()
+
+    match window.control(QUIT) {
+        Option::Some(control) => {
+            if control.id() != QUIT { return Result::Err(UiError::ControlFailed) }
+            control.set_enabled(false)
+            control.set_enabled(true)
+            let _ = control.system()
+        },
+        Option::None => return Result::Err(UiError::ControlFailed),
+    }
 
     // Invalid updates leave the current model installed.
     match window.replace_cycle(DRIVER, &drivers, 2) {
@@ -58,12 +89,14 @@ fn run_ui_controls() -> Result<(), UiError> {
     match window.cycle(DRIVER) {
         Option::Some(control) => {
             control.set_active(1)
+            let _ = control.system()
         },
         Option::None => return Result::Err(UiError::ControlFailed),
     }
     match window.list_view(PARTITIONS) {
         Option::Some(control) => {
             control.set_selected(Option::Some(1))
+            let _ = control.system()
         },
         Option::None => return Result::Err(UiError::ControlFailed),
     }
@@ -81,6 +114,7 @@ fn run_ui_controls() -> Result<(), UiError> {
                 },
                 Option::None => return Result::Err(UiError::ControlFailed),
             }
+            let _ = control.system()
         },
         Option::None => return Result::Err(UiError::ControlFailed),
     }
@@ -90,6 +124,7 @@ fn run_ui_controls() -> Result<(), UiError> {
                 Result::Ok(_) => {},
                 Result::Err(_) => return Result::Err(UiError::ControlFailed),
             }
+            let _ = control.system()
         },
         Option::None => return Result::Err(UiError::ControlFailed),
     }
@@ -100,6 +135,18 @@ fn run_ui_controls() -> Result<(), UiError> {
         Option::Some(control) => {
             control.set_checked(true)
             if !control.checked() { return Result::Err(UiError::ControlFailed) }
+            let _ = control.system()
+        },
+        Option::None => return Result::Err(UiError::ControlFailed),
+    }
+
+    match window.integer(SIZE) {
+        Option::Some(control) => {
+            control.set_value(-1)
+            if control.value().unwrap_or(0) != -1 { return Result::Err(UiError::ControlFailed) }
+            control.set_u32_saturating(4294967295)
+            if control.u32_value().unwrap_or(0) != 2147483647 { return Result::Err(UiError::ControlFailed) }
+            let _ = control.system()
         },
         Option::None => return Result::Err(UiError::ControlFailed),
     }
@@ -107,7 +154,164 @@ fn run_ui_controls() -> Result<(), UiError> {
     return Result::Ok(())
 }
 
+// @covers amiga::ui::ApplicationWindowBuilder::workbench()
+// @covers amiga::ui::ApplicationWindowBuilder::add_cycle(u16, Str, Bounds, Slice<Str>, u16)
+// @covers amiga::ui::ApplicationWindowBuilder::add_list_view(u16, Bounds, Slice<Str>, Option<u16>)
+// @covers amiga::ui::ApplicationWindowBuilder::add_string(u16, Str, Bounds, Str, u16)
+// @covers amiga::ui::ApplicationWindowBuilder::add_text(u16, Bounds, Str)
+// @covers amiga::ui::ApplicationWindowBuilder::add_checkbox(u16, Str, Bounds, bool)
+// @covers amiga::ui::ApplicationWindowBuilder::add_integer(u16, Str, Bounds, i32, u16)
+// @covers amiga::ui::ApplicationWindowBuilder::add_button(u16, Str, Bounds)
+// @covers amiga::ui::ApplicationWindowBuilder::menu_builder()
+// @covers amiga::ui::ApplicationWindowBuilder::build(Str, Bounds, ApplicationMenuStrip)
+// @covers amiga::ui::ApplicationMenuBuilder::add_menu(Str)
+// @covers amiga::ui::ApplicationMenuBuilder::build()
+// @covers amiga::ui::ApplicationMenu::add_item(Str)
+// @covers amiga::ui::ApplicationMenu::add_separator()
+// @covers amiga::ui::ApplicationMenu::system()
+// @covers amiga::ui::ApplicationMenuBuilder::system()
+// @covers amiga::ui::ApplicationMenuItem::with_command_key(u8)
+// @covers amiga::ui::ApplicationMenuItem::with_checkmark()
+// @covers amiga::ui::ApplicationMenuItem::checked()
+// @covers amiga::ui::ApplicationMenuItem::system()
+// @covers amiga::ui::ApplicationWindowBuilder::system()
+// @covers amiga::ui::ApplicationWindow::system()
+// @covers amiga::ui::ApplicationWindow::child_builder()
+// @covers amiga::ui::ApplicationWindow::fill_rect(u8, i16, i16, i16, i16)
+// @covers amiga::ui::ApplicationWindow::outline_rect(u8, i16, i16, i16, i16)
+// @covers amiga::ui::ApplicationWindow::set_menu_enabled(u16, u16, bool)
+// @covers amiga::ui::ApplicationWindow::refresh()
+// @covers amiga::ui::ApplicationWindow::control(u16)
+// @covers amiga::ui::ApplicationControl::id()
+// @covers amiga::ui::ApplicationControl::set_enabled(bool)
+// @covers amiga::ui::ApplicationControl::system()
+// @covers amiga::ui::ApplicationWindow::replace_cycle(u16, Slice<Str>, u16)
+// @covers amiga::ui::ApplicationWindow::replace_list(u16, Slice<Str>, Option<usize>)
+// @covers amiga::ui::ApplicationWindow::cycle(u16)
+// @covers amiga::ui::ApplicationWindow::list_view(u16)
+// @covers amiga::ui::ApplicationWindow::string(u16)
+// @covers amiga::ui::ApplicationWindow::text(u16)
+// @covers amiga::ui::ApplicationWindow::checkbox(u16)
+// @covers amiga::ui::ApplicationCycle::set_active(u16)
+// @covers amiga::ui::ApplicationCycle::system()
+// @covers amiga::ui::ApplicationListView::set_selected(Option<u16>)
+// @covers amiga::ui::ApplicationListView::system()
+// @covers amiga::ui::ApplicationTextInput::set_value(Str)
+// @covers amiga::ui::ApplicationTextInput::value()
+// @covers amiga::ui::ApplicationTextInput::system()
+// @covers amiga::ui::ApplicationText::set_text(Str)
+// @covers amiga::ui::ApplicationText::system()
+// @covers amiga::ui::ApplicationCheckbox::set_checked(bool)
+// @covers amiga::ui::ApplicationCheckbox::checked()
+// @covers amiga::ui::ApplicationCheckbox::system()
+// @covers amiga::ui::ApplicationWindow::integer(u16)
+// @covers amiga::ui::ApplicationIntegerInput::set_value(i32)
+// @covers amiga::ui::ApplicationIntegerInput::value()
+// @covers amiga::ui::ApplicationIntegerInput::set_u32_saturating(u32)
+// @covers amiga::ui::ApplicationIntegerInput::u32_value()
+// @covers amiga::ui::ApplicationIntegerInput::system()
+// @covers amiga::sys::gadtools::builder::GadToolsBuilder::workbench()
+// @covers amiga::sys::gadtools::builder::GadToolsBuilder::add_cycle(u16, Str, GadgetBounds, Slice<Str>, u16)
+// @covers amiga::sys::gadtools::builder::GadToolsBuilder::add_list_view(u16, GadgetBounds, Slice<Str>, Option<u16>)
+// @covers amiga::sys::gadtools::builder::GadToolsBuilder::add_string(u16, Str, GadgetBounds, Str, u16)
+// @covers amiga::sys::gadtools::builder::GadToolsBuilder::add_text(u16, GadgetBounds, Str)
+// @covers amiga::sys::gadtools::builder::GadToolsBuilder::add_checkbox(u16, Str, GadgetBounds, bool)
+// @covers amiga::sys::gadtools::builder::GadToolsBuilder::add_button(u16, Str, GadgetBounds)
+// @covers amiga::sys::gadtools::builder::GadToolsBuilder::menu_builder()
+// @covers amiga::sys::gadtools::builder::GadToolsBuilder::build(Str, GadgetBounds, GadToolsMenuStrip)
+// @covers amiga::sys::gadtools::builder::GadToolsWindow::replace_cycle(u16, Slice<Str>, u16)
+// @covers amiga::sys::gadtools::builder::GadToolsWindow::replace_list(u16, Slice<Str>, Option<u32>)
+// @covers amiga::sys::gadtools::builder::GadToolsWindow::cycle(u16)
+// @covers amiga::sys::gadtools::builder::GadToolsWindow::list_view(u16)
+// @covers amiga::sys::gadtools::builder::GadToolsWindow::string(u16)
+// @covers amiga::sys::gadtools::builder::GadToolsWindow::text(u16)
+// @covers amiga::sys::gadtools::builder::GadToolsWindow::checkbox(u16)
+// @covers amiga::sys::gadtools::builder::CycleControl::set_active(u16)
+// @covers amiga::sys::gadtools::builder::ListViewControl::set_selected(Option<u16>)
+// @covers amiga::sys::gadtools::builder::StringControl::set_value(Str)
+// @covers amiga::sys::gadtools::builder::StringControl::value()
+// @covers amiga::sys::gadtools::builder::TextControl::set_text(Str)
+// @covers amiga::sys::gadtools::builder::CheckboxControl::set_checked(bool)
+// @covers amiga::sys::gadtools::builder::CheckboxControl::checked()
+// @covers amiga::sys::gadtools::menu::GadToolsMenuBuilder::add_menu(Str)
+// @covers amiga::sys::gadtools::menu::GadToolsMenuBuilder::build()
+// @covers amiga::sys::gadtools::menu::MenuHandle::add_item(Str)
 @test("HDPart controls survive repeated model replacement")
 pub fn test_ui_controls() {
     expect_true(run_ui_controls().is_ok(), "controls open, update, and close safely")
+}
+
+fn run_canvas() -> u32 {
+    let builder = WindowBuilder::workbench()
+    let mut_builder = match builder {
+        Result::Ok(value) => value,
+        Result::Err(_) => return 1,
+    }
+    var ui = mut_builder
+    if ui.add_button(1, "Close", Bounds::new(150, 100, 60, 14)).is_err() { return 2 }
+    var menus = ui.menu_builder()
+    var project = menus.add_menu("Project")
+    project.add_item("Close")
+    let menu = match menus.build() {
+        Result::Ok(value) => value,
+        Result::Err(_) => return 3,
+    }
+    let built = ui.build("Canvas contracts", Bounds::new(40, 30, 240, 150), menu)
+    let window_value = match built {
+        Result::Ok(value) => value,
+        Result::Err(_) => return 4,
+    }
+    var app_window = window_value
+    let canvas = match Canvas::for_window(&app_window) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return 5,
+    }
+    canvas.clear(0)
+    canvas.pen(1)
+    canvas.background_pen(0)
+    canvas.pens(1, 0)
+    canvas.mode(DrawMode::Jam1)
+    canvas.move_to(10, 10)
+    canvas.line_to(30, 10)
+    canvas.line(10, 20, 30, 20)
+    canvas.fill(&Rect::new(10, 30, 20, 40))
+    canvas.outline(&Rect::new(25, 30, 35, 40))
+    canvas.erase(&Rect::new(12, 32, 14, 34))
+    canvas.circle(50, 35, 5)
+    canvas.ellipse(&Ellipse::new(70, 35, 6, 4))
+    if canvas.pixel(90, 35).is_err() { return 6 }
+    if canvas.pixel_at(&Point::new(91, 35)).is_err() { return 7 }
+    if canvas.system().get_pixel(90, 35) != 1 { return 8 }
+    if canvas.system().get_pixel(91, 35) != 1 { return 9 }
+    return 0
+}
+
+// @covers amiga::graphics::ApplicationCanvas::for_window(&ApplicationWindow)
+// @covers amiga::graphics::ApplicationCanvas::pen(u8)
+// @covers amiga::graphics::ApplicationCanvas::background_pen(u8)
+// @covers amiga::graphics::ApplicationCanvas::pens(u8, u8)
+// @covers amiga::graphics::ApplicationCanvas::mode(DrawMode)
+// @covers amiga::graphics::ApplicationCanvas::move_to(i16, i16)
+// @covers amiga::graphics::ApplicationCanvas::line_to(i16, i16)
+// @covers amiga::graphics::ApplicationCanvas::line(i16, i16, i16, i16)
+// @covers amiga::graphics::ApplicationCanvas::fill(&Rect)
+// @covers amiga::graphics::ApplicationCanvas::outline(&Rect)
+// @covers amiga::graphics::ApplicationCanvas::erase(&Rect)
+// @covers amiga::graphics::ApplicationCanvas::circle(i16, i16, i16)
+// @covers amiga::graphics::ApplicationCanvas::ellipse(&Ellipse)
+// @covers amiga::graphics::ApplicationCanvas::pixel(i16, i16)
+// @covers amiga::graphics::ApplicationCanvas::pixel_at(&Point)
+// @covers amiga::graphics::ApplicationCanvas::clear(u8)
+// @covers amiga::graphics::ApplicationCanvas::system()
+// @covers amiga::ui::ApplicationWindow::system()
+// @covers amiga::sys::gadtools::builder::GadToolsWindow::rastport()
+// @covers amiga::sys::graphics::draw::DrawContext::pens(u8, u8)
+// @covers amiga::sys::graphics::draw::DrawContext::rect_outline(&Rect)
+// @covers amiga::sys::graphics::draw::DrawContext::circle(i16, i16, i16)
+// @covers amiga::sys::graphics::draw::DrawContext::ellipse_shape(&Ellipse)
+@test("application canvas delegates bounded drawing to its window")
+pub fn test_application_canvas() {
+    let stage = run_canvas()
+    if stage != 0 { write("canvas stage %lu\n", stage) }
+    expect_eq(stage, 0, "canvas opens, draws, reads back, and closes safely")
 }

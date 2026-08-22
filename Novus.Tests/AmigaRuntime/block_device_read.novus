@@ -2,6 +2,12 @@ from std::core import Result
 from amiga::storage import BlockDevice, BlockDeviceError
 from std::test::test import expect
 
+// @covers amiga::storage::block_device::BlockDevice::open(Str, u32)
+// @covers amiga::storage::block_device::BlockDevice::geometry()
+// @covers amiga::storage::block_device::BlockDevice::read_blocks(usize, MutSlice<u8>)
+// @covers amiga::storage::block_device::BlockDevice::write_blocks(usize, Slice<u8>)
+// @covers amiga::storage::block_device::BlockGeometry::block_bytes()
+// @covers amiga::storage::block_device::BlockGeometry::total_blocks()
 @test("block geometry and transfers are safely wrapped")
 pub fn block_device_read() {
     match BlockDevice::open("trackdisk.device", 0) {

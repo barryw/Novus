@@ -3,6 +3,8 @@ from std::test::test import expect
 from amiga::raw::consts import ACCESS_READ, DOSTRUE, ERROR_OBJECT_IN_USE, MODE_NEWFILE
 from amiga::raw::devices::ramdrive import KillRAD, KillRAD0
 from amiga::raw::dos import Close, Delay, Inhibit, IoErr, Lock, Open, UnLock, Write
+from amiga::raw::exec import FindTask
+from amiga::raw::structs import Process
 
 // Mounting writes a marker file, which leaves the handler with outstanding work, and
 // ACTION_INHIBIT is refused with ERROR_OBJECT_IN_USE until it drains. That is
@@ -46,7 +48,11 @@ fn name_equals(name: *u8, expected: Str) -> bool {
 }
 
 fn rad_is_gone(volume: Str) -> bool {
+    let process = (*Process)FindTask(null)
+    let original = if process != null { process.pr_WindowPtr } else { null }
+    if process != null { process.pr_WindowPtr = (*u8)-1 }
     let lock = Lock(volume, ACCESS_READ)
+    if process != null { process.pr_WindowPtr = original }
     if lock != 0 { UnLock(lock) }
     return lock == 0
 }

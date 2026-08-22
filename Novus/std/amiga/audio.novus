@@ -92,12 +92,12 @@ impl Sample {
 }
 
 /// Represents a device value.
-pub struct Device {
+pub struct ApplicationAudioDevice {
     /// The device value stored by `Device`.
     device: SystemDevice,
 }
 
-impl Device {
+impl ApplicationAudioDevice {
     /// Opens `Device`.
     ///
     /// # Parameters
@@ -108,7 +108,7 @@ impl Device {
     /// The requested value on success; the error value explains why the operation could not complete.
     pub fn open(preference: ChannelPreference, priority: i8) -> Result<Device, AudioError> {
         let device = SystemDevice::open(preference, priority)?
-        return Result::Ok(Device { device: device })
+        return Result::Ok(ApplicationAudioDevice { device: device })
     }
 
     /// Opens `Device` using any available system resource.
@@ -119,7 +119,7 @@ impl Device {
     /// # Returns
     /// The requested value on success; the error value explains why the operation could not complete.
     pub fn open_any(priority: i8) -> Result<Device, AudioError> {
-        return Device::open(ChannelPreference::Any, priority)
+        return ApplicationAudioDevice::open(ChannelPreference::Any, priority)
     }
 
     /// Play once at the sample's native rate; PAL/NTSC timing is automatic.
@@ -174,7 +174,7 @@ impl Device {
     ///
     /// # Ownership
     /// Arguments marked `consuming` transfer ownership to this call.
-    pub fn from_system(consuming device: SystemDevice) -> Device { return Device { device: device } }
+    pub fn from_system(consuming device: SystemDevice) -> Device { return ApplicationAudioDevice { device: device } }
     /// Consumes `Device` and returns its system-level value.
     ///
     /// # Returns
@@ -184,3 +184,6 @@ impl Device {
     /// Arguments marked `consuming` transfer ownership to this call.
     pub fn into_system(consuming self) -> SystemDevice { return self.device }
 }
+
+/// High-level audio device.
+pub type Device = ApplicationAudioDevice

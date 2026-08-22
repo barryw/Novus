@@ -99,6 +99,10 @@ owner is `amiga.lib`.
 
 ## Verification and documentation
 
+The live A1200/A4000 runtime, leak, speed, and size results and exact
+reproduction commands are recorded in
+[`NDK_VERIFICATION.md`](NDK_VERIFICATION.md).
+
 Regenerate and verify against an installed copy of the pinned NDK:
 
 ```sh

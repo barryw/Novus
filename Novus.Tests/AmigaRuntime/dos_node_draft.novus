@@ -1,14 +1,42 @@
 from std::core import Result
-from amiga::raw::consts import MEMF_ANY
-from amiga::raw::exec import AvailMem
-from amiga::sys::dos import DosEnvironment, DosNodeDraft
+from amiga::raw::consts import LDF_DEVICES, LDF_WRITE, MEMF_ANY
+from amiga::raw::dos import LockDosList, RemDosEntry, UnLoadSeg, UnLockDosList
+from amiga::raw::exec import AvailMem, FreeMem
+from amiga::raw::structs import DeviceNode, DosEnvec, DosList, FileSysStartupMsg
+from amiga::sys::dos import DosEnvironment, DosNodeDraft, DosNodeError, FileSystemRegistry, LoadedSegment, RegisteredDosNode
 from std::test::test import expect
 
 const DOS_FFS_INTL: u32 = $444F5303
 
+// @covers amiga::sys::dos::node::DosEnvironment::block_bytes()
+// @covers amiga::sys::dos::node::DosEnvironment::dos_type()
+// @covers amiga::sys::dos::node::DosEnvironment::partition(u32, u32, u32, u32, u32, u32)
+// @covers amiga::sys::dos::node::DosEnvironment::set_buffers(u32, u32)
+// @covers amiga::sys::dos::node::DosEnvironment::set_transfer(u32, u32)
+// @covers amiga::sys::dos::node::DosEnvironment::blocks_per_track()
+// @covers amiga::sys::dos::node::DosEnvironment::boot_priority()
+// @covers amiga::sys::dos::node::DosEnvironment::buffers()
+// @covers amiga::sys::dos::node::DosEnvironment::high_cylinder()
+// @covers amiga::sys::dos::node::DosEnvironment::low_cylinder()
+// @covers amiga::sys::dos::node::DosEnvironment::mask()
+// @covers amiga::sys::dos::node::DosEnvironment::max_transfer()
+// @covers amiga::sys::dos::node::DosEnvironment::set_boot_priority(i32)
+// @covers amiga::sys::dos::node::DosEnvironment::set_reserved_blocks(u32)
+// @covers amiga::sys::dos::node::DosEnvironment::surfaces()
+// @covers amiga::sys::dos::node::DosNodeDraft::block_bytes()
+// @covers amiga::sys::dos::node::DosNodeDraft::dos_type()
+// @covers amiga::sys::dos::node::DosNodeDraft::driver()
+// @covers amiga::sys::dos::node::DosNodeDraft::has_handler()
+// @covers amiga::sys::dos::node::DosNodeDraft::name()
+// @covers amiga::sys::dos::node::DosNodeDraft::new(Str, Str, u32, u32, &DosEnvironment)
+// @covers amiga::sys::dos::node::DosNodeDraft::open_flags()
+// @covers amiga::sys::dos::node::DosNodeDraft::unit()
+// @covers amiga::sys::dos::node::DosNodeDraft::as_raw()
+// @covers amiga::sys::dos::node::DosNodeError::message()
 @test("DOS node drafts own and release their backing structures")
 pub fn dos_node_draft() {
     expect(invalid_environment_rejected(), "invalid geometry is rejected")
+    expect(DosNodeError::InvalidName.message() != null, "node errors have messages")
 
     // Warm compiler/runtime paths before taking the memory baseline.
     expect(make_and_drop(), "draft layout is valid")
@@ -45,6 +73,12 @@ fn make_and_drop() -> bool {
         Result::Ok(_) => {},
         Result::Err(_) => return false,
     }
+    environment.set_reserved_blocks(4)
+    environment.set_boot_priority(-5)
+    if environment.surfaces() != 16 || environment.blocks_per_track() != 63 { return false }
+    if environment.low_cylinder() != 2 || environment.high_cylinder() != 100 { return false }
+    if environment.buffers() != 50 || environment.max_transfer() != $1FE00 { return false }
+    if environment.mask() != $7FFFFFFE || environment.boot_priority() != -5 { return false }
     let draft = match DosNodeDraft::new("HDP0", "scsi.device", 2, 0, &environment) {
         Result::Ok(value) => value,
         Result::Err(_) => return false,
@@ -53,5 +87,53 @@ fn make_and_drop() -> bool {
     if !draft.driver().equals("scsi.device") { return false }
     if draft.unit() != 2 || draft.open_flags() != 0 { return false }
     if draft.dos_type() != DOS_FFS_INTL || draft.block_bytes() != 512 { return false }
+    if draft.as_raw() == null { return false }
     return !draft.has_handler()
+}
+
+fn registration_environment() -> DosEnvironment {
+    return DosEnvironment::partition(512, 1, 32, 0, 31, DOS_FFS_INTL).unwrap()
+}
+
+@suppress("W0002", "The test reverses AddDosNode ownership using the exact BPTR graph built by DosNodeDraft")
+fn remove_and_free(registered: &RegisteredDosNode, unload_segment: bool) -> bool {
+    let node = registered.as_raw()
+    if node == null { return false }
+    let name = (*u8)((u32)node.dn_Name << 2)
+    let startup = (*FileSysStartupMsg)((u32)node.dn_Startup << 2)
+    let driver = if startup != null { (*u8)((u32)startup.fssm_Device << 2) } else { (*u8)null }
+    let segment = node.dn_SegList
+    let list = LockDosList(LDF_DEVICES | LDF_WRITE)
+    let removed = list != null && RemDosEntry((*DosList)node) != 0
+    if list != null { UnLockDosList(LDF_DEVICES | LDF_WRITE) }
+    if !removed { return false }
+    if unload_segment { UnLoadSeg(segment) }
+    if name != null { unsafe { FreeMem(name, 1 + (u32)name[0]) } }
+    if driver != null { unsafe { FreeMem(driver, 1 + (u32)driver[0]) } }
+    unsafe { FreeMem((*u8)node, @sizeof(DeviceNode) + @sizeof(FileSysStartupMsg) + @sizeof(DosEnvec)) }
+    return true
+}
+
+// @covers amiga::sys::dos::node::DosNodeDraft::bind_registered(&FileSystemHandler)
+// @covers amiga::sys::dos::node::DosNodeDraft::register(i32, bool)
+// @covers amiga::sys::dos::node::RegisteredDosNode::as_raw()
+@test("DOS node registration transfers a copied system handler and is reversible")
+pub fn registered_node_contract() {
+    let registry = FileSystemRegistry::open().unwrap()
+    let handler = registry.find(DOS_FFS_INTL).unwrap()
+    let environment = registration_environment()
+    var draft = DosNodeDraft::new("NVS0", "uaehf.device", 1, 0, &environment).unwrap()
+    expect(draft.bind_registered(&handler).is_ok() && draft.has_handler(), "registered handler metadata binds to the draft")
+    let registered = draft.register(-128, false).unwrap()
+    expect(registered.as_raw() != null && remove_and_free(&registered, false), "registered node is published, removed, and fully released")
+}
+
+// @covers amiga::sys::dos::node::DosNodeDraft::register_loaded(LoadedSegment, i32, u32, i32, i32, bool)
+@test("DOS node registration transfers and releases an owned file segment")
+pub fn loaded_node_contract() {
+    let environment = registration_environment()
+    let draft = DosNodeDraft::new("NVL0", "uaehf.device", 1, 0, &environment).unwrap()
+    let segment = LoadedSegment::from_file("C:List").unwrap()
+    let registered = draft.register_loaded(segment, -1, 4096, 10, -128, false).unwrap()
+    expect(registered.as_raw().dn_SegList != 0 && remove_and_free(&registered, true), "loaded segment survives registration and unloads after removal")
 }

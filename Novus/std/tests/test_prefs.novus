@@ -10,6 +10,11 @@ from amiga::raw::dos import DeleteFile
 // Creation Tests
 // =============================================================================
 
+// @covers amiga::workbench::preferences::Prefs::new(Str, u32)
+// @covers amiga::workbench::preferences::Prefs::len()
+// @covers amiga::workbench::preferences::Prefs::is_empty()
+// @covers amiga::workbench::preferences::Prefs::version()
+// @covers amiga::workbench::preferences::Prefs::is_dirty()
 @test("Prefs::new creates empty prefs")
 pub fn test_new_creates_empty_prefs() {
     let result = Prefs::new("test_app", 1)
@@ -30,6 +35,8 @@ pub fn test_new_creates_empty_prefs() {
 // String Getter/Setter Tests
 // =============================================================================
 
+// @covers amiga::workbench::preferences::Prefs::set_str(Str, Str)
+// @covers amiga::workbench::preferences::Prefs::get_str(Str, Str)
 @test("set_str and get_str work")
 pub fn test_set_and_get_str() {
     let result = Prefs::new("test_app", 1)
@@ -58,6 +65,7 @@ pub fn test_get_str_default() {
     }
 }
 
+// @covers amiga::workbench::preferences::Prefs::try_get_str(Str)
 @test("try_get_str returns None for missing key")
 pub fn test_try_get_str_none() {
     let result = Prefs::new("test_app", 1)
@@ -91,6 +99,8 @@ pub fn test_try_get_str_some() {
 // Integer Getter/Setter Tests
 // =============================================================================
 
+// @covers amiga::workbench::preferences::Prefs::set_u32(Str, u32)
+// @covers amiga::workbench::preferences::Prefs::get_u32(Str, u32)
 @test("set_u32 and get_u32 work")
 pub fn test_set_and_get_u32() {
     let result = Prefs::new("test_app", 1)
@@ -104,6 +114,8 @@ pub fn test_set_and_get_u32() {
     }
 }
 
+// @covers amiga::workbench::preferences::Prefs::set_i32(Str, i32)
+// @covers amiga::workbench::preferences::Prefs::get_i32(Str, i32)
 @test("set_i32 and get_i32 work with negative")
 pub fn test_set_and_get_i32_negative() {
     let result = Prefs::new("test_app", 1)
@@ -146,6 +158,8 @@ pub fn test_get_u32_missing() {
 // Boolean Getter/Setter Tests
 // =============================================================================
 
+// @covers amiga::workbench::preferences::Prefs::set_bool(Str, bool)
+// @covers amiga::workbench::preferences::Prefs::get_bool(Str, bool)
 @test("set_bool and get_bool work with true")
 pub fn test_set_and_get_bool_true() {
     let result = Prefs::new("test_app", 1)
@@ -215,6 +229,7 @@ pub fn test_get_bool_invalid() {
 // Contains and Remove Tests
 // =============================================================================
 
+// @covers amiga::workbench::preferences::Prefs::contains(Str)
 @test("contains returns false for missing key")
 pub fn test_contains_missing() {
     let result = Prefs::new("test_app", 1)
@@ -238,6 +253,7 @@ pub fn test_contains_existing() {
     }
 }
 
+// @covers amiga::workbench::preferences::Prefs::remove(Str)
 @test("remove removes existing key")
 pub fn test_remove_existing() {
     let result = Prefs::new("test_app", 1)
@@ -264,6 +280,7 @@ pub fn test_remove_missing() {
     }
 }
 
+// @covers amiga::workbench::preferences::Prefs::clear()
 @test("clear removes all entries")
 pub fn test_clear() {
     let result = Prefs::new("test_app", 1)
@@ -293,9 +310,7 @@ pub fn test_empty_key_rejected() {
         Result::Ok(var prefs) => {
             let set_result = prefs.set_str("", "value")
             match set_result {
-                Result::Err(PrefsError::InvalidKey) => {
-                    expect(true, "empty key rejected with InvalidKey")
-                },
+                Result::Err(PrefsError::InvalidKey) => {},
                 _ => expect(false, "empty key should be rejected")
             }
         },
@@ -310,9 +325,7 @@ pub fn test_key_with_equals_rejected() {
         Result::Ok(var prefs) => {
             let set_result = prefs.set_str("key=bad", "value")
             match set_result {
-                Result::Err(PrefsError::InvalidKey) => {
-                    expect(true, "key with = rejected")
-                },
+                Result::Err(PrefsError::InvalidKey) => {},
                 _ => expect(false, "key with = should be rejected")
             }
         },
@@ -368,6 +381,7 @@ pub fn test_update_existing_key() {
 // Note: These tests use RAM: instead of ENV:/ENVARC: for isolation.
 // The actual save/load will write to ENV: and ENVARC:.
 
+// @covers amiga::workbench::preferences::Prefs::write_to_file(Str)
 @test("save creates file and load reads it back")
 pub fn test_save_and_load_roundtrip() {
     // Clean up any existing test files
@@ -402,6 +416,7 @@ pub fn test_save_and_load_roundtrip() {
     DeleteFile("RAM:test_prefs_app.prefs")
 }
 
+// @covers amiga::workbench::preferences::Prefs::load(Str, u32)
 @test("load returns NotFound for missing file")
 pub fn test_load_not_found() {
     // Ensure file doesn't exist
@@ -410,11 +425,103 @@ pub fn test_load_not_found() {
 
     let result = Prefs::load("definitely_not_exists_xyz", 1)
     match result {
-        Result::Err(PrefsError::NotFound) => {
-            expect(true, "load returns NotFound")
-        },
+        Result::Err(PrefsError::NotFound) => {},
         _ => expect(false, "load should return NotFound for missing file")
     }
+}
+
+// @covers amiga::workbench::preferences::Prefs::load_any(Str)
+@test("load_any returns NotFound for missing file")
+pub fn test_load_any_not_found() {
+    DeleteFile("ENV:definitely_not_exists_any_xyz.prefs")
+    DeleteFile("ENVARC:definitely_not_exists_any_xyz.prefs")
+    match Prefs::load_any("definitely_not_exists_any_xyz") {
+        Result::Err(PrefsError::NotFound) => {},
+        _ => expect(false, "load_any should return NotFound for missing file")
+    }
+}
+
+// @covers amiga::workbench::preferences::Prefs::try_get_i32(Str)
+@test("try_get_i32 returns parsed values")
+pub fn test_try_get_i32() {
+    match Prefs::new("test_app", 1) {
+        Result::Ok(var prefs) => {
+            prefs.set_i32("value", -42).unwrap()
+            match prefs.try_get_i32("value") {
+                Option::Some(value) => expect(value == -42, "signed value is preserved"),
+                Option::None => expect(false, "signed value should exist"),
+            }
+        },
+        Result::Err(_) => expect(false, "Prefs::new should succeed"),
+    }
+}
+
+// @covers amiga::workbench::preferences::Prefs::try_get_u32(Str)
+@test("try_get_u32 returns parsed values")
+pub fn test_try_get_u32() {
+    match Prefs::new("test_app", 1) {
+        Result::Ok(var prefs) => {
+            prefs.set_u32("value", 42).unwrap()
+            match prefs.try_get_u32("value") {
+                Option::Some(value) => expect(value == 42, "unsigned value is preserved"),
+                Option::None => expect(false, "unsigned value should exist"),
+            }
+        },
+        Result::Err(_) => expect(false, "Prefs::new should succeed"),
+    }
+}
+
+// @covers amiga::workbench::preferences::Prefs::try_get_bool(Str)
+@test("try_get_bool returns parsed values")
+pub fn test_try_get_bool() {
+    match Prefs::new("test_app", 1) {
+        Result::Ok(var prefs) => {
+            prefs.set_bool("value", true).unwrap()
+            match prefs.try_get_bool("value") {
+                Option::Some(value) => expect(value, "boolean value is preserved"),
+                Option::None => expect(false, "boolean value should exist"),
+            }
+        },
+        Result::Err(_) => expect(false, "Prefs::new should succeed"),
+    }
+}
+
+// @covers amiga::workbench::preferences::Prefs::save()
+@test("save writes ENV and ENVARC preferences")
+pub fn test_save() {
+    DeleteFile("ENV:novus_tier12_verify.prefs")
+    DeleteFile("ENVARC:novus_tier12_verify.prefs")
+    match Prefs::new("novus_tier12_verify", 1) {
+        Result::Ok(var prefs) => {
+            prefs.set_str("value", "saved").unwrap()
+            expect(prefs.save().is_ok(), "save succeeds")
+        },
+        Result::Err(_) => expect(false, "Prefs::new should succeed"),
+    }
+    DeleteFile("ENV:novus_tier12_verify.prefs")
+    DeleteFile("ENVARC:novus_tier12_verify.prefs")
+}
+
+// @covers amiga::workbench::preferences::Prefs::save_as_version(u32)
+@test("save_as_version updates the persisted version")
+pub fn test_save_as_version() {
+    DeleteFile("ENV:novus_tier12_version.prefs")
+    DeleteFile("ENVARC:novus_tier12_version.prefs")
+    match Prefs::new("novus_tier12_version", 1) {
+        Result::Ok(var prefs) => {
+            expect(prefs.save_as_version(2).is_ok(), "versioned save succeeds")
+            expect(prefs.version() == 2, "version is updated")
+        },
+        Result::Err(_) => expect(false, "Prefs::new should succeed"),
+    }
+    DeleteFile("ENV:novus_tier12_version.prefs")
+    DeleteFile("ENVARC:novus_tier12_version.prefs")
+}
+
+// @covers amiga::workbench::preferences::PrefsError::message()
+@test("preference errors expose messages")
+pub fn test_prefs_error_message() {
+    expect((u32)PrefsError::InvalidKey.message() != 0, "error message is non-null")
 }
 
 // =============================================================================

@@ -1,0 +1,108 @@
+from std::test::test import expect
+from amiga::raw::graphics import InitRastPort
+from amiga::raw::structs import RastPort
+from amiga::sys::graphics::patterns import FillPattern, LinePattern
+from amiga::sys::graphics::patterns import allocate_pattern, clear_fill_pattern, clear_line_pattern
+from amiga::sys::graphics::patterns import get_line_pattern, has_fill_pattern, invert_line_pattern
+from amiga::sys::graphics::patterns import rotate_line_pattern_left, rotate_line_pattern_right
+from amiga::sys::graphics::patterns import set_fill_pattern, set_fill_pattern_2, set_fill_pattern_4, set_line_pattern
+
+// @covers amiga::sys::graphics::patterns::LinePattern::apply(*RastPort)
+// @covers amiga::sys::graphics::patterns::LinePattern::custom(u16)
+// @covers amiga::sys::graphics::patterns::LinePattern::dash_dot()
+// @covers amiga::sys::graphics::patterns::LinePattern::dashed()
+// @covers amiga::sys::graphics::patterns::LinePattern::dotted()
+// @covers amiga::sys::graphics::patterns::LinePattern::long_dash()
+// @covers amiga::sys::graphics::patterns::LinePattern::new(u16)
+// @covers amiga::sys::graphics::patterns::LinePattern::solid()
+// @covers amiga::sys::graphics::patterns::clear_line_pattern(*RastPort)
+// @covers amiga::sys::graphics::patterns::get_line_pattern(*RastPort)
+// @covers amiga::sys::graphics::patterns::invert_line_pattern(u16)
+// @covers amiga::sys::graphics::patterns::rotate_line_pattern_left(u16, u8)
+// @covers amiga::sys::graphics::patterns::rotate_line_pattern_right(u16, u8)
+// @covers amiga::sys::graphics::patterns::set_line_pattern(*RastPort, u16)
+@test("line patterns preserve values and rotate safely")
+pub fn line_pattern_contracts() {
+    var rp: RastPort = @zeroed(RastPort)
+    InitRastPort(&var rp)
+    LinePattern::solid().apply(&var rp)
+    expect(get_line_pattern(&var rp) == $FFFF, "solid pattern applies")
+    LinePattern::dotted().apply(&var rp)
+    expect(get_line_pattern(&var rp) == $AAAA, "dotted pattern applies")
+    LinePattern::dashed().apply(&var rp)
+    expect(get_line_pattern(&var rp) == $F0F0, "dashed pattern applies")
+    LinePattern::long_dash().apply(&var rp)
+    expect(get_line_pattern(&var rp) == $FF00, "long dash applies")
+    LinePattern::dash_dot().apply(&var rp)
+    expect(get_line_pattern(&var rp) == $FC48, "dash-dot applies")
+    LinePattern::new($1234).apply(&var rp)
+    LinePattern::custom($5678).apply(&var rp)
+    expect(get_line_pattern(&var rp) == $5678, "custom pattern applies")
+    set_line_pattern(&var rp, $0F0F)
+    expect(get_line_pattern(&var rp) == $0F0F, "raw setter applies")
+    clear_line_pattern(&var rp)
+    expect(get_line_pattern(&var rp) == $FFFF, "clear restores solid")
+    expect(invert_line_pattern($F00F) == $0FF0, "invert swaps bits")
+    expect(rotate_line_pattern_left($8001, 1) == $0003, "left rotate wraps")
+    expect(rotate_line_pattern_right($8001, 1) == $C000, "right rotate wraps")
+    expect(rotate_line_pattern_left($1234, 0) == $1234, "zero left rotate is defined")
+    expect(rotate_line_pattern_right($1234, 16) == $1234, "full right rotate is defined")
+    set_line_pattern(null, 0)
+    expect(get_line_pattern(null) == $FFFF, "null RastPort is safe")
+}
+
+// @covers amiga::sys::graphics::patterns::FillPattern::apply(*RastPort)
+// @covers amiga::sys::graphics::patterns::FillPattern::checkerboard()
+// @covers amiga::sys::graphics::patterns::FillPattern::height_power()
+// @covers amiga::sys::graphics::patterns::FillPattern::horizontal_lines()
+// @covers amiga::sys::graphics::patterns::FillPattern::new_2(u16, u16)
+// @covers amiga::sys::graphics::patterns::FillPattern::new_4(u16, u16, u16, u16)
+// @covers amiga::sys::graphics::patterns::FillPattern::ptr()
+// @covers amiga::sys::graphics::patterns::FillPattern::vertical_lines()
+// @covers amiga::sys::graphics::patterns::allocate_pattern(u32, u32, u32)
+// @covers amiga::sys::graphics::patterns::clear_fill_pattern(*RastPort)
+// @covers amiga::sys::graphics::patterns::has_fill_pattern(*RastPort)
+// @covers amiga::sys::graphics::patterns::set_fill_pattern(*RastPort, *u16, i8)
+// @covers amiga::sys::graphics::patterns::set_fill_pattern_2(*RastPort, *[u16; 2])
+// @covers amiga::sys::graphics::patterns::set_fill_pattern_4(*RastPort, *[u16; 4])
+@test("fill patterns own chip data and apply metadata")
+pub fn fill_pattern_contracts() {
+    var rp: RastPort = @zeroed(RastPort)
+    InitRastPort(&var rp)
+    var two: [u16] = [$AAAA, $5555]
+    set_fill_pattern_2(&var rp, &var two)
+    expect(has_fill_pattern(&var rp) && rp.AreaPtSz == 1, "two-row pattern applies")
+    var four: [u16] = [$FFFF, 0, $AAAA, $5555]
+    set_fill_pattern_4(&var rp, &var four)
+    expect(has_fill_pattern(&var rp) && rp.AreaPtSz == 2, "four-row pattern applies")
+    set_fill_pattern(&var rp, (*u16)&var four, 2)
+    expect(rp.AreaPtrn != null, "raw fill setter preserves pointer")
+    clear_fill_pattern(&var rp)
+    expect(!has_fill_pattern(&var rp), "clear removes fill pattern")
+
+    match FillPattern::new_2($1111, $2222) {
+        Result::Ok(pattern) => {
+            pattern.apply(&var rp)
+            expect(pattern.ptr() != null && pattern.height_power() == 1, "owned two-row pattern applies")
+            clear_fill_pattern(&var rp)
+        },
+        Result::Err(_) => expect(false, "two-row allocation succeeds"),
+    }
+    match FillPattern::new_4(1, 2, 3, 4) {
+        Result::Ok(pattern) => {
+            expect(pattern.ptr() != null && pattern.height_power() == 2, "owned four-row pattern is valid")
+        },
+        Result::Err(_) => expect(false, "four-row allocation succeeds"),
+    }
+    expect(FillPattern::checkerboard().is_ok(), "checkerboard allocates")
+    expect(FillPattern::horizontal_lines().is_ok(), "horizontal lines allocate")
+    expect(FillPattern::vertical_lines().is_ok(), "vertical lines allocate")
+    match allocate_pattern(1, 2, 4) {
+        Result::Ok(memory) => expect(memory.size() == 8, "pattern allocation uses requested size"),
+        Result::Err(_) => expect(false, "pattern allocation succeeds"),
+    }
+    expect(allocate_pattern(0, 2, 4).is_err(), "zero allocation is rejected")
+    expect(allocate_pattern($FFFFFFFF, 2, 2).is_err(), "overflowing allocation is rejected")
+    clear_fill_pattern(null)
+    expect(!has_fill_pattern(null), "null RastPort is safe")
+}

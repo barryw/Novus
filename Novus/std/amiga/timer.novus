@@ -1,8 +1,7 @@
 from std::core import Error, From, Result
-from amiga::sys::timer import AsyncTimer as SystemAsyncTimer, Duration as SystemDuration
-from amiga::sys::timer import Interval as SystemInterval, TimerError as SystemTimerError
-from amiga::sys::timer import TimerHandle, WaitResult as SystemWaitResult
-from amiga::sys::timer import delay as system_delay, elapsed_since as system_elapsed_since, now as system_now
+from amiga::sys::timer::device import AsyncTimer as SystemAsyncTimer, Duration as SystemDuration
+from amiga::sys::timer::device import Interval as SystemInterval, TimerError as SystemTimerError
+from amiga::sys::timer::device import TimerHandle, WaitResult as SystemWaitResult
 
 /// Application timer failures without exposing timer.device mechanics.
 pub enum ApplicationTimerError {
@@ -202,12 +201,18 @@ impl ApplicationAsyncTimer {
 ///
 /// # Returns
 /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
-pub fn delay(duration: Duration) -> Result<(), TimerError> { return Result::Ok(system_delay(duration)?) }
+pub fn delay(duration: Duration) -> Result<(), TimerError> {
+    var timer = ApplicationTimer::microhz()?
+    return timer.delay(duration)
+}
 /// Returns the now value associated with the module.
 ///
 /// # Returns
 /// The requested value on success; the error value explains why the operation could not complete.
-pub fn now() -> Result<Duration, TimerError> { return Result::Ok(system_now()?) }
+pub fn now() -> Result<Duration, TimerError> {
+    var timer = ApplicationTimer::microhz()?
+    return timer.time()
+}
 /// Returns the elapsed time since the supplied timestamp.
 ///
 /// # Parameters
@@ -216,7 +221,8 @@ pub fn now() -> Result<Duration, TimerError> { return Result::Ok(system_now()?) 
 /// # Returns
 /// The requested value on success; the error value explains why the operation could not complete.
 pub fn elapsed_since(start: Duration) -> Result<Duration, TimerError> {
-    return Result::Ok(system_elapsed_since(start)?)
+    let current = now()?
+    return Result::Ok(current.sub(start))
 }
 
 /// Aliases `Timer` to `ApplicationTimer`.

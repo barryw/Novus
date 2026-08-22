@@ -1,0 +1,234 @@
+from std::test::test import expect
+from amiga::raw::consts import GTYP_CLOSE, GTYP_SYSTYPEMASK, IECODE_LBUTTON, IECODE_UP_PREFIX, IECLASS_NEWPOINTERPOS, IECLASS_RAWMOUSE, IESUBCLASS_PIXEL, IND_WRITEEVENT, NOITEM, NOSUB
+from amiga::raw::exec import CloseDevice, CreateIORequest, CreateMsgPort, DeleteIORequest, DeleteMsgPort, DoIO, OpenDevice
+from amiga::raw::graphics import WaitTOF
+from amiga::raw::structs import Gadget, IEPointerPixel, InputEvent, IORequest, IOStdReq, Window
+from amiga::sys::gadtools::builder import GadgetBounds, GadToolsBuilder, GadToolsEvent, StaticGadget, StaticGadToolsUi
+from amiga::sys::gadtools::menu import GadToolsMenuBuilder, MenuSelection, StaticMenuEntry
+from amiga::sys::intuition import WindowHandle
+from amiga::sys::exec::thread import ThreadHandle, run_thread_loop, spawn_thread
+
+static GADGETS: [StaticGadget] = [
+    StaticGadget::checkbox(1, "Enabled", 24, 18, 120, 14, true),
+    StaticGadget::integer(2, "Value", 24, 40, 120, 18, 42, 3),
+    StaticGadget::button(3, "Close", 100, 72, 70, 18),
+    StaticGadget::text(4, "Ready", 24, 98, 120, 14),
+]
+
+static MENUS: [StaticMenuEntry] = [
+    StaticMenuEntry::title("File"),
+    StaticMenuEntry::item("Close", "Q"),
+    StaticMenuEntry::end(),
+]
+
+static UI: StaticGadToolsUi = StaticGadToolsUi {
+    title: "Static GadTools contracts",
+    bounds: GadgetBounds::new(40, 30, 210, 140),
+    gadgets: GADGETS,
+    gadget_count: 4,
+    menus: MENUS,
+}
+
+const CLOSE_WORK: u32 = 1 << 17
+static var CLOSE_TARGET: *Window = null
+static var CLOSE_CLICKED: bool = false
+
+fn close_gadget(window: *Window) -> *Gadget {
+    var gadget = window.FirstGadget
+    while gadget != null {
+        if ((u32)gadget.GadgetType & GTYP_SYSTYPEMASK) == GTYP_CLOSE { return gadget }
+        gadget = gadget.NextGadget
+    }
+    return null
+}
+
+@suppress("W0002", "pinned input constants and close-gadget coordinates fit their exact ABI fields")
+fn click_close(window: *Window) -> bool {
+    if window == null || window.WScreen == null { return false }
+    let gadget = close_gadget(window)
+    if gadget == null { return false }
+    let reply = CreateMsgPort()
+    if reply == null { return false }
+    let request = CreateIORequest(reply, @sizeof(IOStdReq))
+    if request == null {
+        DeleteMsgPort(reply)
+        return false
+    }
+    let opened = unsafe { OpenDevice("input.device", 0, (*IORequest)request, 0) } == 0
+    var pixel: IEPointerPixel = @zeroed(IEPointerPixel)
+    pixel.iepp_Screen = window.WScreen
+    pixel.iepp_Position.X = window.LeftEdge + gadget.LeftEdge + gadget.Width / 2
+    pixel.iepp_Position.Y = window.TopEdge + gadget.TopEdge + gadget.Height / 2
+    var event: InputEvent = @zeroed(InputEvent)
+    let io = (*IOStdReq)request
+    io.io_Command = (u16)IND_WRITEEVENT
+    io.io_Length = @sizeof(InputEvent)
+    io.io_Data = (*u8)&var event
+    event.ie_Class = (u8)IECLASS_NEWPOINTERPOS
+    event.ie_SubClass = (u8)IESUBCLASS_PIXEL
+    event.ie_position.ie_addr = (*u8)&var pixel
+    let moved = opened && unsafe { DoIO((*IORequest)request) } == 0
+    WaitTOF()
+    event = @zeroed(InputEvent)
+    event.ie_Class = (u8)IECLASS_RAWMOUSE
+    event.ie_Code = (u16)IECODE_LBUTTON
+    let down = moved && unsafe { DoIO((*IORequest)request) } == 0
+    WaitTOF()
+    event.ie_Code = (u16)(IECODE_LBUTTON | IECODE_UP_PREFIX)
+    let up = down && unsafe { DoIO((*IORequest)request) } == 0
+    if opened { unsafe { CloseDevice((*IORequest)request) } }
+    DeleteIORequest(request)
+    DeleteMsgPort(reply)
+    return up
+}
+
+fn close_tick(_state: *u8) -> bool {
+    for var frame: u32 = 0; frame < 20; frame++ { WaitTOF() }
+    CLOSE_CLICKED = click_close(CLOSE_TARGET)
+    return false
+}
+
+fn close_thread() -> i32 { return run_thread_loop(CLOSE_WORK, null, close_tick) }
+
+fn prepare_close(window: *Window) -> ThreadHandle {
+    CLOSE_TARGET = window
+    CLOSE_CLICKED = false
+    var thread = spawn_thread("Tier12 window closer", close_thread, 8192).unwrap()
+    thread.signal(CLOSE_WORK)
+    return thread
+}
+
+// @covers amiga::sys::gadtools::builder::StaticGadToolsUi::open()
+// @covers amiga::sys::gadtools::builder::StaticGadToolsWindow::as_raw()
+// @covers amiga::sys::gadtools::builder::StaticGadToolsWindow::system()
+// @covers amiga::sys::gadtools::builder::StaticGadToolsWindow::control(u16)
+// @covers amiga::sys::gadtools::builder::StaticGadToolsWindow::checkbox(u16)
+// @covers amiga::sys::gadtools::builder::StaticGadToolsWindow::integer(u16)
+// @covers amiga::sys::gadtools::builder::StaticGadToolsWindow::text(u16)
+// @covers amiga::sys::gadtools::builder::StaticGadToolsWindow::cycle(u16)
+// @covers amiga::sys::gadtools::builder::StaticGadToolsWindow::list_view(u16)
+// @covers amiga::sys::gadtools::builder::StaticGadToolsWindow::string(u16)
+// @covers amiga::sys::gadtools::builder::StaticGadToolsWindow::wait_event()
+// @covers amiga::sys::intuition::window::WindowRef::borrow(&Window)
+// @covers amiga::sys::intuition::window::WindowRef::as_raw()
+@test("static GadTools views preserve control kinds and ownership")
+pub fn static_gadtools_contracts() {
+    match UI.open() {
+        Result::Ok(window) => {
+            var value = window
+            let raw = value.as_raw()
+            let system = value.system()
+            expect(raw != null && unsafe { system.as_raw() } == raw, "system view borrows the same window")
+            expect(value.control(3).is_some(), "button has a generic control view")
+            expect(value.checkbox(1).is_some(), "checkbox kind is preserved")
+            expect(value.integer(2).is_some(), "integer kind is preserved")
+            expect(value.text(4).is_some(), "text kind is preserved")
+            expect(value.cycle(1).is_none(), "checkbox is not a cycle")
+            expect(value.list_view(1).is_none(), "checkbox is not a list view")
+            expect(value.string(1).is_none(), "checkbox is not a string")
+            var closer = prepare_close(raw)
+            closer.wait()
+            expect(CLOSE_CLICKED, "static close gadget received injected input")
+            if CLOSE_CLICKED {
+                var closed = false
+                while !closed { closed = matches!(value.wait_event(), GadToolsEvent::Close) }
+                expect(closed, "static wait decodes a real close event")
+            }
+        },
+        Result::Err(_) => expect(false, "static UI should open"),
+    }
+}
+
+// @covers amiga::sys::gadtools::builder::GadToolsBuilder::add_integer(u16, Str, GadgetBounds, i32, u16)
+// @covers amiga::sys::gadtools::builder::GadToolsBuilder::workbench_or_own()
+// @covers amiga::sys::gadtools::builder::GadToolsControl::id()
+// @covers amiga::sys::gadtools::builder::GadToolsControl::set_enabled(bool)
+// @covers amiga::sys::gadtools::builder::GadToolsWindow::as_raw()
+// @covers amiga::sys::gadtools::builder::GadToolsWindow::child_builder()
+// @covers amiga::sys::gadtools::builder::GadToolsWindow::control(u16)
+// @covers amiga::sys::gadtools::builder::GadToolsWindow::fill_rect(u8, i16, i16, i16, i16)
+// @covers amiga::sys::gadtools::builder::GadToolsWindow::integer(u16)
+// @covers amiga::sys::gadtools::builder::GadToolsWindow::outline_rect(u8, i16, i16, i16, i16)
+// @covers amiga::sys::gadtools::builder::GadToolsWindow::refresh()
+// @covers amiga::sys::gadtools::builder::GadToolsWindow::set_menu_enabled(u16, u16, bool)
+// @covers amiga::sys::gadtools::builder::GadToolsWindow::system()
+// @covers amiga::sys::gadtools::builder::GadToolsWindow::wait_event()
+// @covers amiga::sys::gadtools::builder::IntegerControl::set_u32_saturating(u32)
+// @covers amiga::sys::gadtools::builder::IntegerControl::set_value(i32)
+// @covers amiga::sys::gadtools::builder::IntegerControl::u32_value()
+// @covers amiga::sys::gadtools::builder::IntegerControl::value()
+@test("dynamic GadTools window controls, drawing, menus, and events remain live")
+pub fn dynamic_gadtools_contracts() {
+    var builder = GadToolsBuilder::workbench_or_own().unwrap()
+    builder.add_integer(21, "Value", GadgetBounds::new(16, 18, 150, 18), 7, 10).unwrap()
+    var menus = builder.menu_builder()
+    var project = menus.add_menu("Project")
+    project.add_item("Close")
+    let strip = menus.build().unwrap()
+    var window = builder.build("Dynamic GadTools", GadgetBounds::new(40, 30, 220, 100), strip).unwrap()
+    expect(window.as_raw() != null && unsafe { window.system().as_raw() } == window.as_raw(), "window views share identity")
+    let control = window.control(21).unwrap()
+    expect(control.id() == 21, "control preserves identifier")
+    control.set_enabled(false)
+    control.set_enabled(true)
+    let integer = window.integer(21).unwrap()
+    expect(integer.value().unwrap() == 7 && integer.u32_value().unwrap() == 7, "integer starts with configured value")
+    integer.set_value(-1)
+    expect(integer.value().unwrap() == -1 && integer.u32_value().is_none(), "negative integer has no unsigned view")
+    integer.set_u32_saturating(0xffffffff)
+    expect(integer.value().unwrap() == 2147483647, "unsigned setter saturates at signed maximum")
+    window.fill_rect(1, 8, 55, 20, 65)
+    window.outline_rect(1, 24, 55, 40, 65)
+    window.set_menu_enabled(0, 0, false)
+    window.set_menu_enabled(0, 0, true)
+    window.refresh()
+    expect(window.child_builder().is_ok(), "child builder borrows the same live screen")
+    var closer = prepare_close(window.as_raw())
+    closer.wait()
+    expect(CLOSE_CLICKED, "dynamic close gadget received injected input")
+    if CLOSE_CLICKED {
+        var closed = false
+        while !closed { closed = matches!(window.wait_event(), GadToolsEvent::Close) }
+        expect(closed, "dynamic wait decodes a real close event")
+    }
+}
+
+// @covers amiga::sys::gadtools::menu::GadToolsMenuBuilder::new(*Screen)
+// @covers amiga::sys::gadtools::menu::GadToolsMenuStrip::attach(*Window)
+// @covers amiga::sys::gadtools::menu::GadToolsMenuStrip::detach(*Window)
+// @covers amiga::sys::gadtools::menu::GadToolsMenuStrip::get_item(u16)
+// @covers amiga::sys::gadtools::menu::GadToolsMenuStrip::raw_menu()
+// @covers amiga::sys::gadtools::menu::MenuHandle::add_separator()
+// @covers amiga::sys::gadtools::menu::MenuItemHandle::add_sub_item(Str)
+// @covers amiga::sys::gadtools::menu::MenuItemHandle::checked()
+// @covers amiga::sys::gadtools::menu::MenuItemHandle::with_checkmark()
+// @covers amiga::sys::gadtools::menu::MenuItemHandle::with_command_key(u8)
+// @covers amiga::sys::gadtools::menu::MenuSelection::from_code(u16)
+// @covers amiga::sys::gadtools::menu::MenuSelection::is_item()
+// @covers amiga::sys::gadtools::menu::MenuSelection::is_sub_item()
+// @covers amiga::sys::gadtools::menu::MenuSelection::is_title()
+// @covers amiga::sys::gadtools::menu::MenuSelection::matches(u16, u16)
+@test("GadTools menus build hierarchy, attach, address items, and decode selections")
+pub fn gadtools_menu_contracts() {
+    let owner = WindowHandle::simple("Menu owner", 220, 100).unwrap()
+    var builder = GadToolsMenuBuilder::new(owner.get_screen())
+    var menu = builder.add_menu("Project")
+    var parent = menu.add_item("Recent")
+    parent.with_command_key((u8)'R').with_checkmark().checked()
+    parent.add_sub_item("One")
+    menu.add_separator()
+    menu.add_item("Close")
+    let strip = builder.build().unwrap()
+    expect(strip.raw_menu() != null, "menu strip exposes native menu")
+    expect(strip.attach(owner.as_raw()).is_ok(), "menu strip attaches")
+    let item_code = (u16)(NOSUB << 11)
+    expect(strip.get_item(item_code).is_some(), "first item is addressable")
+    strip.detach(owner.as_raw())
+
+    let title = MenuSelection::from_code((u16)((NOITEM << 5) | (NOSUB << 11)))
+    let item = MenuSelection::from_code(item_code)
+    let sub = MenuSelection::from_code((u16)(1 << 11))
+    expect(title.is_title(), "title selection is recognized")
+    expect(item.is_item() && item.matches(0, 0), "item selection is recognized and matches")
+    expect(sub.is_sub_item(), "sub-item selection is recognized")
+}

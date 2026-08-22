@@ -23,6 +23,7 @@ fn wait_for_intuition() {
 // @covers-ndk function|intuition.library|OpenWindowTagList
 // @covers-ndk function|intuition.library|CloseWindow
 // @ndk-side-effects OpenWindowTagList creates a real Workbench window and its IDCMP port; WindowHandle Drop drains messages and CloseWindow releases both, with the suite-level memory check proving no retained allocation
+// @covers amiga::sys::intuition::window::WindowHandle::simple(Str, i16, i16)
 @test("WindowHandle::simple opens a window successfully")
 pub fn test_window_simple_opens() {
     let result = WindowHandle::simple("Test Window", 200, 150)
@@ -38,6 +39,8 @@ pub fn test_window_simple_opens() {
     }
 }
 
+// @covers amiga::sys::intuition::window::WindowHandle::width()
+// @covers amiga::sys::intuition::window::WindowHandle::height()
 @test("WindowHandle::simple has correct dimensions")
 pub fn test_window_simple_dimensions() {
     let result = WindowHandle::simple("Dim Test", 320, 200)
@@ -54,6 +57,7 @@ pub fn test_window_simple_dimensions() {
     }
 }
 
+// @covers amiga::sys::intuition::window::WindowHandle::borderless(i16, i16)
 @test("WindowHandle::borderless opens without borders")
 pub fn test_window_borderless_opens() {
     let result = WindowHandle::borderless(100, 80)
@@ -106,6 +110,8 @@ pub fn test_window_borderless_opens() {
 // @covers-ndk function|intuition.library|WindowToBack
 // @covers-ndk function|layers.library|WhichLayer
 // @ndk-side-effects WindowToFront and WindowToBack defer layer rearrangement to Intuition; WhichLayer observes the target alternately above and below an overlapping peer after input ticks
+// @covers amiga::sys::intuition::window::WindowHandle::to_front()
+// @covers amiga::sys::intuition::window::WindowHandle::to_back()
 @test("WindowHandle::to_front and to_back change depth order")
 pub fn test_window_depth_operations() {
     let result = WindowHandle::simple("Depth Test", 200, 150)
@@ -143,6 +149,7 @@ pub fn test_window_depth_operations() {
 
 // @covers-ndk function|intuition.library|ActivateWindow
 // @ndk-side-effects ActivateWindow transfers WFLG_WINDOWACTIVE from the peer to the target after Intuition processes the requests
+// @covers amiga::sys::intuition::window::WindowHandle::activate()
 @test("WindowHandle::activate gives focus")
 pub fn test_window_activate() {
     let result = WindowHandle::simple("Activate Test", 200, 150)
@@ -172,6 +179,7 @@ pub fn test_window_activate() {
 
 // @covers-ndk function|intuition.library|MoveWindow
 // @ndk-side-effects MoveWindow defers each signed relative move; the live Window records the exact accumulated LeftEdge and TopEdge deltas after input ticks
+// @covers amiga::sys::intuition::window::WindowHandle::move_by(i16, i16)
 @test("WindowHandle::move_by changes position")
 pub fn test_window_move_by() {
     let result = WindowHandle::simple("Move Test", 200, 150)
@@ -201,6 +209,7 @@ pub fn test_window_move_by() {
 
 // @covers-ndk function|intuition.library|SizeWindow
 // @ndk-side-effects SizeWindow defers resizing and updates the live Window to the exact requested width and height within its limits
+// @covers amiga::sys::intuition::window::WindowHandle::resize_by(i16, i16)
 @test("WindowHandle::resize_by changes size")
 pub fn test_window_resize_by() {
     let result = WindowHandle::simple("Resize Test", 200, 150)
@@ -223,6 +232,7 @@ pub fn test_window_resize_by() {
 
 // @covers-ndk function|intuition.library|ChangeWindowBox
 // @ndk-side-effects ChangeWindowBox defers one atomic absolute position and size change; all four live Window fields match after an input tick
+// @covers amiga::sys::intuition::window::WindowHandle::set_bounds(i16, i16, i16, i16)
 @test("WindowHandle::set_bounds sets position and size")
 pub fn test_window_set_bounds() {
     let result = WindowHandle::simple("Bounds Test", 200, 150)
@@ -244,6 +254,7 @@ pub fn test_window_set_bounds() {
 
 // @covers-ndk function|intuition.library|WindowLimits
 // @ndk-side-effects WindowLimits accepts four valid constraints containing the current size and stores the exact minimum and maximum dimensions
+// @covers amiga::sys::intuition::window::WindowHandle::set_limits(i32, i32, u32, u32)
 @test("WindowHandle::set_limits constrains sizing")
 pub fn test_window_set_limits() {
     let result = WindowHandle::simple("Limits Test", 200, 150)
@@ -265,6 +276,7 @@ pub fn test_window_set_limits() {
 
 // @covers-ndk function|intuition.library|ZipWindow
 // @ndk-side-effects ZipWindow defers each change and toggles WFLG_ZOOMED on the first input tick, then restores the original state on the second
+// @covers amiga::sys::intuition::window::WindowHandle::zoom()
 @test("WindowHandle::zoom toggles size")
 pub fn test_window_zoom() {
     let result = WindowHandle::simple("Zoom Test", 200, 150)
@@ -298,6 +310,7 @@ pub fn test_window_refresh_frame() {
 
 // @covers-ndk function|intuition.library|ModifyIDCMP
 // @ndk-side-effects ModifyIDCMP replaces the window's live event subscription with exactly IDCMP_CLOSEWINDOW and reports success
+// @covers amiga::sys::intuition::window::WindowHandle::modify_idcmp(u32)
 @test("WindowHandle::modify_idcmp changes event mask")
 pub fn test_window_modify_idcmp() {
     let result = WindowHandle::simple("IDCMP Test", 200, 150)
@@ -320,6 +333,7 @@ pub fn test_window_modify_idcmp() {
 
 // @covers-ndk function|intuition.library|SetMouseQueue
 // @ndk-side-effects SetMouseQueue installs a 20-message mouse queue and the restoring call returns 20 as the exact replaced limit
+// @covers amiga::sys::intuition::window::WindowHandle::set_mouse_queue(u16)
 @test("WindowHandle::set_mouse_queue changes queue size")
 pub fn test_window_set_mouse_queue() {
     let result = WindowHandle::simple("Queue Test", 200, 150)
@@ -340,6 +354,7 @@ pub fn test_window_set_mouse_queue() {
 // ============================================================================
 // Window Properties Tests
 // ============================================================================
+// @covers amiga::sys::intuition::window::WindowHandle::user_port()
 @test("WindowHandle::user_port returns valid port")
 pub fn test_window_user_port() {
     let result = WindowHandle::simple("Port Test", 200, 150)
@@ -355,6 +370,7 @@ pub fn test_window_user_port() {
     }
 }
 
+// @covers amiga::sys::intuition::window::WindowHandle::get_screen()
 @test("WindowHandle::get_screen returns Workbench screen")
 pub fn test_window_get_screen() {
     let result = WindowHandle::simple("Screen Test", 200, 150)
@@ -404,6 +420,7 @@ pub fn test_multiple_windows() {
 // @covers-ndk function|intuition.library|MoveWindowInFrontOf
 // @covers-ndk function|layers.library|WhichLayer
 // @ndk-side-effects MoveWindowInFrontOf rearranges overlapping window layers and WhichLayer observes the target above its peer at their shared coordinate
+// @covers amiga::sys::intuition::window::WindowHandle::move_in_front_of(&WindowHandle)
 @test("WindowHandle::move_in_front_of changes depth order")
 pub fn test_window_move_in_front_of() {
     let result1 = WindowHandle::simple("Back", 200, 150)

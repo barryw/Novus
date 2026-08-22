@@ -1,7 +1,7 @@
 # Novus Sprite System
 
-**Version:** 1.0
-**Status:** Implementation Ready
+**Version:** 1.1
+**Status:** Runtime implemented; macro syntax below remains the compile-time design
 **Target:** AmigaOS 3.x, NDK 3.9, 68k processors
 
 ---
@@ -31,7 +31,7 @@ from amiga::sys::graphics::screen import open_screen
 from amiga::sys::graphics::palette import rgb
 from amiga::sys::hardware::timer import vblank_wait
 
-// Define sprite at compile time (always 16 pixels wide)
+// Define a portable sprite at compile time (16 pixels wide)
 const CURSOR: Sprite = sprite! {
     pixels: [
         "1000000000000000",
@@ -71,10 +71,25 @@ pub fn main() -> i32 {
 ```
 
 **Key Points:**
-- Sprites are ALWAYS 16 pixels wide (hardware constraint)
+- Portable OCS/ECS sprites and the compile-time macros are 16 pixels wide
+- Runtime data can use 16-, 32-, or 64-pixel fetches on AGA
 - Regular sprites have 4 colors (2 bitplanes), attached sprites have 16 colors (4 bitplanes)
 - Type system enforces constraints - no depth parameter needed
 - Automatic RAII cleanup via Drop trait
+
+### AGA extended widths
+
+`SpriteData::from_raw_width(data, len, width)` and
+`AttachedSpriteData::from_raw_width(data, len, width)` accept widths of 16, 32,
+or 64 pixels. The library detects the chipset at runtime: 16 works everywhere,
+while 32 and 64 return `GraphicsError::BadDisplayMode` unless `CHIPSET()` is
+`SystemChipset::AGA`. Other widths and malformed expanded rows return
+`GraphicsError::InvalidSpriteData`.
+
+For width `W`, each two-plane control, scanline, and terminator block contains
+`2 * (W / 16)` words. Attached four-plane input contains `4 * (W / 16)` words
+per scanline and is deinterleaved into the paired hardware sprites. Position
+control words and terminators expand to the same fetch width.
 
 ---
 
@@ -166,13 +181,13 @@ const BOSS: AttachedSprite = attached_sprite! {
 
 ```novus
 pub struct Sprite {
-    width: u16,      // Always 16
+    width: u16,      // Compile-time macro sprites are 16 pixels wide
     height: u16,     // Height in pixels
     data: &[u16],    // Compile-time sprite data
 }
 
 impl Sprite {
-    pub fn width(&self) -> u16      // Always 16
+    pub fn width(&self) -> u16
     pub fn height(&self) -> u16
     pub fn upload(&self) -> Result<SpriteData, GraphicsError>
 }
@@ -643,9 +658,10 @@ SPRxCTL bits 15-8 = vstop
 
 ### Hardware Constraints
 
-- Width: Exactly 16 pixels (enforced by hardware DMA)
-- Height: Arbitrary (practical limit ~256 scanlines)
+- Width: 16 pixels on OCS/ECS; 16, 32, or 64 pixels on AGA
+- Height: Arbitrary within the encoded vertical range
 - Position: 0-319 horizontal (lores), 0-255 vertical (standard)
+- Vertical encoding: up to 511 on OCS/ECS and 1023 on AGA
 - Depth: 2 or 4 bitplanes only
 - Memory: Must reside in CHIP RAM for DMA access
 - Priority: Sprite 0 highest, Sprite 7 lowest
@@ -762,7 +778,7 @@ error: sprite width must be exactly 16 pixels
 42 |         "01234567890123456789",
    |         ^^^^^^^^^^^^^^^^^^^^^^ this row has 20 pixels
    |
-   = note: hardware sprites must be exactly 16 pixels wide
+   = note: portable compile-time sprites must be exactly 16 pixels wide
 ```
 
 **Color Range Error:**
@@ -1094,7 +1110,7 @@ Example: 16-line sprite = 144 bytes CHIP RAM
 ### Design Principles
 
 1. **Type Safety** - `Sprite` vs `AttachedSprite` enforced by compiler
-2. **No Configuration** - Depth is implicit, width is always 16
+2. **Explicit AGA Width** - Depth is implicit; extended width is requested only through `from_raw_width`
 3. **RAII Memory** - Automatic cleanup via Drop trait
 4. **Compile-Time Validation** - Errors caught before runtime
 5. **Hardware Abstraction** - Colors, positions automatic

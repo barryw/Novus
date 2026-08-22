@@ -253,6 +253,7 @@ pub fn utility_structure_packing() {
 // @covers-ndk function|utility.library|AllocNamedObjectA
 // @covers-ndk function|utility.library|FreeNamedObject
 // @covers-ndk function|utility.library|NamedObjectName
+// @covers amiga::sys::utility::named_object::free_named_object(*NamedObject)
 // @ndk-side-effects AllocNamedObjectA owns aligned writable user space and an immutable name; raw FreeNamedObject is superseded because utility.library 47.3 passes FreeVec its pointer in the wrong register; free_named_object releases the allocation safely; NamedObjectName(null) returns null without mutation
 @test("utility tag-list named object allocation owns name and user storage")
 pub fn utility_named_object_allocation_a() {

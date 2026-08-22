@@ -24,10 +24,61 @@ from amiga::sys::exec::memory::allocation import MemHandle
 from amiga::raw::structs import Custom
 from amiga::raw::graphics import WaitTOF
 from amiga::raw::exec import FreeVec
-from amiga::sys::hardware::chipset import DisplayType, DISPLAY
+from amiga::sys::hardware::chipset import DisplayType, SystemChipset, CHIPSET, DISPLAY
 
 // Track if sprite DMA has been enabled
 static var DMA_ENABLED: bool = false
+static var BLANK_SPRITE: *u16 = null
+static var SPRITE_FETCH_WIDTH: u16 = 16
+static var SPRITE_CHANNELS_VISIBLE: u8 = 0
+
+fn fetch_words_for_width(width: u16) -> u32 {
+    return match width {
+        16 => 1,
+        32 => 2,
+        64 => 4,
+        _ => 0,
+    }
+}
+
+fn sprite_pair_collision_bit(first: u8, second: u8) -> u16 {
+    let first_pair = first / 2
+    let second_pair = second / 2
+    if first_pair == second_pair { return 0 }
+    let low = if first_pair < second_pair { first_pair } else { second_pair }
+    let high = if first_pair < second_pair { second_pair } else { first_pair }
+    return match low {
+        0 => match high { 1 => 1 << 10, 2 => 1 << 11, 3 => 1 << 13, _ => 0 },
+        1 => match high { 2 => 1 << 12, 3 => 1 << 14, _ => 0 },
+        2 => match high { 3 => 1 << 15, _ => 0 },
+        _ => 0,
+    }
+}
+
+fn configure_sprite_fetch_width(width: u16, channel: u8) -> Result<(), GraphicsError> {
+    if fetch_words_for_width(width) == 0 {
+        return Result::Err(GraphicsError::InvalidSpriteData)
+    }
+    if width > 16 && CHIPSET() != SystemChipset::AGA {
+        return Result::Err(GraphicsError::BadDisplayMode)
+    }
+    if width == SPRITE_FETCH_WIDTH {
+        return Result::Ok(())
+    }
+    let channel_mask: u8 = 1 << channel
+    let other_visible = SPRITE_CHANNELS_VISIBLE & (channel_mask ^ $FF)
+    if other_visible != 0 {
+        return Result::Err(GraphicsError::BadDisplayMode)
+    }
+    unsafe {
+        let fmode = (*u16)$DFF1FC
+        // FMODE is write-only. The direct-hardware API owns the display mode;
+        // Intuition applications must use the OS-backed extended sprite API.
+        *fmode = match width { 32 => $0004, 64 => $000C, _ => 0 }
+        SPRITE_FETCH_WIDTH = width
+    }
+    return Result::Ok(())
+}
 
 // Initialize the sprite system - enables sprite DMA
 // PAL/NTSC detection is handled automatically by amiga::sys::hardware::chipset::DISPLAY()
@@ -40,11 +91,40 @@ pub fn init_sprite_system() {
 
         // Enable sprite DMA (DMACON register at $DFF096)
         // Set bit 15 (SETCLR) + bit 5 (SPREN - sprite DMA enable)
-        // Preserve other DMA bits by ORing with existing value
+        // DMACON uses set/clear semantics; bit 15 selects "set".
         let dmacon = (*u16)$DFF096
-        *dmacon = *dmacon | $8020
+        *dmacon = $8020
 
         DMA_ENABLED = true
+    }
+}
+
+fn ensure_blank_sprite() -> Result<*u16, GraphicsError> {
+    if BLANK_SPRITE != null {
+        return Result::Ok(BLANK_SPRITE)
+    }
+    // A single all-zero block is a valid terminator in every AGA fetch width.
+    match MemHandle::new_chip(32) {
+        Result::Err(_) => return Result::Err(GraphicsError::BitMapAllocFailed),
+        Result::Ok(memory) => {
+            unsafe {
+                let words = (*u16)memory.ptr()
+                for i in 0..16 { words[i] = 0 }
+                BLANK_SPRITE = (*u16)memory.into_raw()
+            }
+            return Result::Ok(BLANK_SPRITE)
+        },
+    }
+}
+
+fn write_sprite_pointer(custom: *u8, channel: u8, data: *u16) {
+    let address = (u32)data
+    let offset = (u32)channel * 4
+    unsafe {
+        let high = (*u16)((u32)custom + $120 + offset)
+        let low = (*u16)((u32)custom + $122 + offset)
+        *high = (u16)(address >> 16)
+        *low = (u16)(address & $FFFF)
     }
 }
 
@@ -96,8 +176,39 @@ impl SpriteData {
     /// # Returns
     /// The requested value on success; the error value explains why the operation could not complete.
     pub fn from_raw(data: *u16, len: u32) -> Result<SpriteData, GraphicsError> {
-        if len < 4 {
+        return SpriteData::from_raw_width(data, len, 16)
+    }
+
+    /// Copies hardware-format sprite words into CHIP RAM for a 16, 32, or
+    /// 64-pixel fetch. Widths above 16 require AGA. Each control, data, and
+    /// terminator word expands to `width / 16` consecutive words.
+    ///
+    /// # Parameters
+    /// * `data` - Complete hardware sprite data, including control and terminator blocks.
+    /// * `len` - Number of 16-bit words in `data`.
+    /// * `width` - Sprite fetch width: 16, 32, or 64 pixels.
+    ///
+    /// # Returns
+    /// The copied sprite data, or an error for an unsupported width or malformed layout.
+    pub fn from_raw_width(data: *u16, len: u32, width: u16) -> Result<SpriteData, GraphicsError> {
+        let fetch_words = fetch_words_for_width(width)
+        if fetch_words == 0 {
             return Result::Err(GraphicsError::InvalidSpriteData)
+        }
+        if width > 16 && CHIPSET() != SystemChipset::AGA {
+            return Result::Err(GraphicsError::BadDisplayMode)
+        }
+        let words_per_row = fetch_words * 2
+        let overhead = words_per_row * 2
+        if data == null || len < overhead + words_per_row || (len - overhead) % words_per_row != 0 {
+            return Result::Err(GraphicsError::InvalidSpriteData)
+        }
+        unsafe {
+            for i in (len - words_per_row)..len {
+                if data[i] != 0 {
+                    return Result::Err(GraphicsError::InvalidSpriteData)
+                }
+            }
         }
 
         // Allocate CHIP RAM
@@ -120,15 +231,13 @@ impl SpriteData {
                 let data_ptr = (*u16)chip_mem.into_raw()
 
                 // Calculate height from data
-                // Format: control_word (2 words) + (height * 2 words per line) + terminator (2 words)
-                let num_words = len - 4  // Subtract control and terminator
-                let num_lines = num_words / 2  // 2 words per line (2 bitplanes)
+                let num_lines = (len - overhead) / words_per_row
 
                 return Result::Ok(SpriteData {
                     data_ptr: data_ptr,
                     owns_memory: true,
                     height: (u16)num_lines,
-                    width: 16,
+                    width: width,
                 })
             }
         }
@@ -208,6 +317,12 @@ pub struct SpriteHandle {
     pos_y: i16,          // Current Y position
     /// The sprite height value stored by `SpriteHandle`.
     sprite_height: u16,  // Current sprite height (for vstop calculation)
+    /// Current sprite fetch width.
+    sprite_width: u16,
+    /// Current image whose control words are consumed by sprite DMA.
+    sprite_data: *u16,
+    /// Whether this is the odd member of an attached sprite pair.
+    attached: bool,
 }
 
 impl SpriteHandle {
@@ -224,6 +339,8 @@ impl SpriteHandle {
             return Result::Err(GraphicsError::InvalidSpriteChannel)
         }
 
+        let blank = ensure_blank_sprite()?
+
         // Check if channel is already allocated
         unsafe {
             let channel_mask: u8 = 1 << channel
@@ -234,6 +351,8 @@ impl SpriteHandle {
         }
 
         let custom = (*u8)$DFF000
+        write_sprite_pointer(custom, channel, blank)
+        init_sprite_system()
 
         return Result::Ok(SpriteHandle {
             channel: channel,
@@ -243,6 +362,9 @@ impl SpriteHandle {
             pos_x: 0,
             pos_y: 0,
             sprite_height: 0,
+            sprite_width: 16,
+            sprite_data: null,
+            attached: false,
         })
     }
 
@@ -261,36 +383,20 @@ impl SpriteHandle {
         if !self.is_allocated {
             return Result::Err(GraphicsError::SpriteNotAllocated)
         }
+        configure_sprite_fetch_width(sprite.width(), self.channel)?
 
         // Store sprite height for vstop calculation
         self.sprite_height = sprite.height()
+        self.sprite_width = sprite.width()
 
-        // Wait for VBlank to avoid DMA race condition
-        // This ensures position control words are updated before sprite data is fetched
-        WaitTOF()
-
-        // Set 32-bit sprite pointer (split into PTH and PTL registers)
-        // SPRxPTH/SPRxPTL are at $DFF120 + (channel * 4)
-        let sprite_ptr_addr = (u32)sprite.as_ptr()
-        let ptr_high = (u16)(sprite_ptr_addr >> 16)
-        let ptr_low = (u16)(sprite_ptr_addr & $FFFF)
-
-        let channel_offset = (u32)self.channel * 4
-        let spr_pth_offset = $120 + channel_offset
-        let spr_ptl_offset = $122 + channel_offset
-
-        unsafe {
-            let pth_reg = (*u16)((u32)self.custom + spr_pth_offset)
-            let ptl_reg = (*u16)((u32)self.custom + spr_ptl_offset)
-            *pth_reg = ptr_high
-            *ptl_reg = ptr_low
-        }
-
-        // Set position
-        self.visible = true
-        self.pos_x = x
-        self.pos_y = y
+        self.sprite_data = sprite.as_ptr()
         self.move_to(x, y)?
+
+        // Install the fully initialized data at VBlank to avoid a DMA race.
+        WaitTOF()
+        write_sprite_pointer(self.custom, self.channel, self.sprite_data)
+        self.visible = true
+        unsafe { SPRITE_CHANNELS_VISIBLE = SPRITE_CHANNELS_VISIBLE | (1 << self.channel) }
 
         return Result::Ok(())
     }
@@ -309,23 +415,27 @@ impl SpriteHandle {
             return Result::Err(GraphicsError::SpriteNotAllocated)
         }
 
-        // Update tracked position
-        self.pos_x = x
-        self.pos_y = y
-
         // Calculate hardware position with offset
-        let hw_x = (u16)(x + $81)
-        let hw_y = (u16)(y + (i16)get_vstart_offset())
+        let hw_x_value = x + $81
+        let hw_y_value = y + (i16)get_vstart_offset()
+        if hw_x_value < 0 || hw_y_value < 0 {
+            return Result::Err(GraphicsError::InvalidSpriteData)
+        }
+        let hw_x = (u16)hw_x_value
+        let hw_y = (u16)hw_y_value
 
         // Calculate VSTART/VSTOP
         // VSTOP = VSTART + height + 1 (hardware requirement)
         let vstart = hw_y
         let vstop = hw_y + self.sprite_height + 1
 
-        // Validate VSTOP doesn't exceed hardware limits (9-bit field, max 511)
-        if vstop > 511 {
+        let max_vertical: u16 = if CHIPSET() == SystemChipset::AGA { 1023 } else { 511 }
+        if hw_x > 511 || vstop > max_vertical {
             return Result::Err(GraphicsError::InvalidSpriteData)
         }
+
+        self.pos_x = x
+        self.pos_y = y
 
         // SPRxPOS format: VSTART (8 bits) | HSTART (8 bits)
         let pos = ((vstart & $FF) << 8) | (hw_x & $FF)
@@ -334,7 +444,13 @@ impl SpriteHandle {
         let vstop_hi = (vstop >> 8) & 1
         let vstart_hi = (vstart >> 8) & 1
         let hstart_hi = (hw_x >> 8) & 1
-        let ctl = ((vstop & $FF) << 8) | (vstop_hi << 2) | (vstart_hi << 1) | hstart_hi
+        var ctl = ((vstop & $FF) << 8) | (vstop_hi << 2) | (vstart_hi << 1) | hstart_hi
+        if CHIPSET() == SystemChipset::AGA {
+            ctl = ctl | (((vstart >> 9) & 1) << 6) | (((vstop >> 9) & 1) << 5)
+        }
+        if self.attached {
+            ctl = ctl | $80
+        }
 
         // Write to hardware registers
         let channel_offset = self.channel * 8
@@ -342,6 +458,10 @@ impl SpriteHandle {
         let spr_ctl_offset = $142 + (u32)channel_offset
 
         unsafe {
+            if self.sprite_data != null {
+                self.sprite_data[0] = pos
+                self.sprite_data[(u32)self.sprite_width / 16] = ctl
+            }
             let pos_reg = (*u16)((u32)self.custom + spr_pos_offset)
             let ctl_reg = (*u16)((u32)self.custom + spr_ctl_offset)
             *pos_reg = pos
@@ -357,8 +477,19 @@ impl SpriteHandle {
     /// # Returns
     /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn hide(&var self) -> Result<(), GraphicsError> {
+        if !self.is_allocated {
+            return Result::Err(GraphicsError::SpriteNotAllocated)
+        }
+        let blank = ensure_blank_sprite()?
+        WaitTOF()
+        write_sprite_pointer(self.custom, self.channel, blank)
         self.visible = false
-        self.move_to(-100, -100)?
+        unsafe { SPRITE_CHANNELS_VISIBLE = SPRITE_CHANNELS_VISIBLE & ((1 << self.channel) ^ $FF) }
+        self.pos_x = -(i16)self.sprite_width
+        self.pos_y = match DISPLAY() {
+            DisplayType::PAL => 257,
+            DisplayType::NTSC => 201,
+        }
         return Result::Ok(())
     }
 
@@ -402,7 +533,7 @@ impl SpriteHandle {
     /// # Returns
     /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_on_screen(&self) -> bool {
-        if self.pos_x < -16 || self.pos_x > 320 {
+        if self.pos_x < -(i16)self.sprite_width || self.pos_x > 320 {
             return false
         }
         let max_y: i16 = match DISPLAY() {
@@ -429,28 +560,25 @@ impl SpriteHandle {
             return Result::Err(GraphicsError::SpriteNotAllocated)
         }
 
-        // Store new sprite height
+        if self.visible {
+            configure_sprite_fetch_width(sprite.width(), self.channel)?
+        }
+
+        // Store the new image and height.
         self.sprite_height = sprite.height()
+        self.sprite_width = sprite.width()
+        self.sprite_data = sprite.as_ptr()
+
+        if !self.visible {
+            return Result::Ok(())
+        }
 
         // Wait for VBlank to avoid DMA race condition
         // This ensures sprite data pointers are updated safely
         WaitTOF()
 
-        // Update sprite pointer registers
-        let sprite_ptr_addr = (u32)sprite.as_ptr()
-        let ptr_high = (u16)(sprite_ptr_addr >> 16)
-        let ptr_low = (u16)(sprite_ptr_addr & $FFFF)
-
-        let channel_offset = (u32)self.channel * 4
-        let spr_pth_offset = $120 + channel_offset
-        let spr_ptl_offset = $122 + channel_offset
-
-        unsafe {
-            let pth_reg = (*u16)((u32)self.custom + spr_pth_offset)
-            let ptl_reg = (*u16)((u32)self.custom + spr_ptl_offset)
-            *pth_reg = ptr_high
-            *ptl_reg = ptr_low
-        }
+        write_sprite_pointer(self.custom, self.channel, self.sprite_data)
+        self.move_to(self.pos_x, self.pos_y)?
 
         return Result::Ok(())
     }
@@ -501,8 +629,8 @@ impl SpriteHandle {
         return Result::Ok(())
     }
 
-    // Check if this sprite has collided with another sprite channel
-    // Returns true if a collision was detected since the last clear
+    // Check whether this sprite's pair collided with the other sprite's pair.
+    // CLXDAT cannot distinguish the two channels within a hardware sprite pair.
     /// Checks collision with for `SpriteHandle`.
     ///
     /// # Parameters
@@ -515,77 +643,8 @@ impl SpriteHandle {
             return false
         }
 
-        let clxdat = read_sprite_collisions()
-
-        // CLXDAT register format (bits 15-0):
-        // Bit 0: Sprite 0 vs 1
-        // Bit 1: Sprite 0 vs 2
-        // Bit 2: Sprite 0 vs 4
-        // Bit 3: Sprite 0 vs 6
-        // Bit 4: Sprite 1 vs 3
-        // Bit 5: Sprite 1 vs 5
-        // Bit 6: Sprite 1 vs 7
-        // Bit 7: Sprite 2 vs 3
-        // Bit 8: Sprite 2 vs 4
-        // Bit 9: Sprite 2 vs 6
-        // Bit 10: Sprite 3 vs 5
-        // Bit 11: Sprite 3 vs 7
-        // Bit 12: Sprite 4 vs 5
-        // Bit 13: Sprite 4 vs 6
-        // Bit 14: Sprite 5 vs 7
-        // Bit 15: Sprite 6 vs 7
-
-        // Check all possible collision combinations
-        if self.channel == 0 && other_channel == 1 || self.channel == 1 && other_channel == 0 {
-            return (clxdat & (1 << 0)) != 0
-        }
-        if self.channel == 0 && other_channel == 2 || self.channel == 2 && other_channel == 0 {
-            return (clxdat & (1 << 1)) != 0
-        }
-        if self.channel == 0 && other_channel == 4 || self.channel == 4 && other_channel == 0 {
-            return (clxdat & (1 << 2)) != 0
-        }
-        if self.channel == 0 && other_channel == 6 || self.channel == 6 && other_channel == 0 {
-            return (clxdat & (1 << 3)) != 0
-        }
-        if self.channel == 1 && other_channel == 3 || self.channel == 3 && other_channel == 1 {
-            return (clxdat & (1 << 4)) != 0
-        }
-        if self.channel == 1 && other_channel == 5 || self.channel == 5 && other_channel == 1 {
-            return (clxdat & (1 << 5)) != 0
-        }
-        if self.channel == 1 && other_channel == 7 || self.channel == 7 && other_channel == 1 {
-            return (clxdat & (1 << 6)) != 0
-        }
-        if self.channel == 2 && other_channel == 3 || self.channel == 3 && other_channel == 2 {
-            return (clxdat & (1 << 7)) != 0
-        }
-        if self.channel == 2 && other_channel == 4 || self.channel == 4 && other_channel == 2 {
-            return (clxdat & (1 << 8)) != 0
-        }
-        if self.channel == 2 && other_channel == 6 || self.channel == 6 && other_channel == 2 {
-            return (clxdat & (1 << 9)) != 0
-        }
-        if self.channel == 3 && other_channel == 5 || self.channel == 5 && other_channel == 3 {
-            return (clxdat & (1 << 10)) != 0
-        }
-        if self.channel == 3 && other_channel == 7 || self.channel == 7 && other_channel == 3 {
-            return (clxdat & (1 << 11)) != 0
-        }
-        if self.channel == 4 && other_channel == 5 || self.channel == 5 && other_channel == 4 {
-            return (clxdat & (1 << 12)) != 0
-        }
-        if self.channel == 4 && other_channel == 6 || self.channel == 6 && other_channel == 4 {
-            return (clxdat & (1 << 13)) != 0
-        }
-        if self.channel == 5 && other_channel == 7 || self.channel == 7 && other_channel == 5 {
-            return (clxdat & (1 << 14)) != 0
-        }
-        if self.channel == 6 && other_channel == 7 || self.channel == 7 && other_channel == 6 {
-            return (clxdat & (1 << 15)) != 0
-        }
-
-        return false
+        let bit = sprite_pair_collision_bit(self.channel, other_channel)
+        return bit != 0 && (read_sprite_collisions() & bit) != 0
     }
 
     // Get list of all sprite channels that this sprite has collided with
@@ -609,68 +668,11 @@ impl SpriteHandle {
                 continue
             }
 
-            let collided = match self.channel {
-                0 => match other_channel {
-                    1 => (clxdat & (1 << 0)) != 0,
-                    2 => (clxdat & (1 << 1)) != 0,
-                    4 => (clxdat & (1 << 2)) != 0,
-                    6 => (clxdat & (1 << 3)) != 0,
-                    _ => false,
-                },
-                1 => match other_channel {
-                    0 => (clxdat & (1 << 0)) != 0,
-                    3 => (clxdat & (1 << 4)) != 0,
-                    5 => (clxdat & (1 << 5)) != 0,
-                    7 => (clxdat & (1 << 6)) != 0,
-                    _ => false,
-                },
-                2 => match other_channel {
-                    0 => (clxdat & (1 << 1)) != 0,
-                    3 => (clxdat & (1 << 7)) != 0,
-                    4 => (clxdat & (1 << 8)) != 0,
-                    6 => (clxdat & (1 << 9)) != 0,
-                    _ => false,
-                },
-                3 => match other_channel {
-                    1 => (clxdat & (1 << 4)) != 0,
-                    2 => (clxdat & (1 << 7)) != 0,
-                    5 => (clxdat & (1 << 10)) != 0,
-                    7 => (clxdat & (1 << 11)) != 0,
-                    _ => false,
-                },
-                4 => match other_channel {
-                    0 => (clxdat & (1 << 2)) != 0,
-                    2 => (clxdat & (1 << 8)) != 0,
-                    5 => (clxdat & (1 << 12)) != 0,
-                    6 => (clxdat & (1 << 13)) != 0,
-                    _ => false,
-                },
-                5 => match other_channel {
-                    1 => (clxdat & (1 << 5)) != 0,
-                    3 => (clxdat & (1 << 10)) != 0,
-                    4 => (clxdat & (1 << 12)) != 0,
-                    7 => (clxdat & (1 << 14)) != 0,
-                    _ => false,
-                },
-                6 => match other_channel {
-                    0 => (clxdat & (1 << 3)) != 0,
-                    2 => (clxdat & (1 << 9)) != 0,
-                    4 => (clxdat & (1 << 13)) != 0,
-                    7 => (clxdat & (1 << 15)) != 0,
-                    _ => false,
-                },
-                7 => match other_channel {
-                    1 => (clxdat & (1 << 6)) != 0,
-                    3 => (clxdat & (1 << 11)) != 0,
-                    5 => (clxdat & (1 << 14)) != 0,
-                    6 => (clxdat & (1 << 15)) != 0,
-                    _ => false,
-                },
-                _ => false,
-            }
+            let bit = sprite_pair_collision_bit(self.channel, other_channel)
+            let collided = bit != 0 && (clxdat & bit) != 0
 
             if collided {
-                if count < max_channels {
+                if count < max_channels && out_channels != null {
                     unsafe {
                         out_channels[count] = other_channel
                     }
@@ -695,6 +697,26 @@ impl SpriteHandle {
                 }
             }
             self.is_allocated = false
+            self.sprite_data = null
+
+            unsafe {
+                if SPRITE_CHANNELS_ALLOCATED == 0 {
+                    let dmacon = (*u16)$DFF096
+                    *dmacon = $0020
+                    DMA_ENABLED = false
+                    SPRITE_CHANNELS_VISIBLE = 0
+                    WaitTOF()
+                    if CHIPSET() == SystemChipset::AGA {
+                        let fmode = (*u16)$DFF1FC
+                        *fmode = 0
+                    }
+                    SPRITE_FETCH_WIDTH = 16
+                    if BLANK_SPRITE != null {
+                        FreeVec((*u8)BLANK_SPRITE)
+                        BLANK_SPRITE = null
+                    }
+                }
+            }
         }
     }
 }
@@ -732,7 +754,8 @@ impl AttachedSpriteHandle {
         }
 
         let sprite0 = SpriteHandle::alloc(channel)?
-        let sprite1 = SpriteHandle::alloc(channel + 1)?
+        var sprite1 = SpriteHandle::alloc(channel + 1)?
+        sprite1.attached = true
 
         return Result::Ok(AttachedSpriteHandle {
             channel: channel,
@@ -757,16 +780,6 @@ impl AttachedSpriteHandle {
 
         // Show odd sprite (planes 2 and 3)
         self.sprite1.show(&sprite.plane23, x, y)?
-
-        // Set ATTACH bit (bit 7) in odd sprite's CTL register
-        // This tells the hardware to combine the two sprites into one 16-color sprite
-        let channel_offset = self.sprite1.channel * 8
-        let spr_ctl_offset = $142 + (u32)channel_offset
-
-        unsafe {
-            let ctl_reg = (*u16)((u32)self.sprite1.custom + spr_ctl_offset)
-            *ctl_reg = *ctl_reg | $80  // Set bit 7 (ATTACH)
-        }
 
         return Result::Ok(())
     }
@@ -815,6 +828,14 @@ impl AttachedSpriteHandle {
     /// # Returns
     /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn set_image(&var self, sprite: &AttachedSpriteData) -> Result<(), GraphicsError> {
+        let width_changed = self.sprite0.sprite_width != sprite.width()
+        if width_changed && (self.sprite0.visible || self.sprite1.visible) {
+            let (x, y) = self.sprite0.position()
+            self.hide()?
+            self.sprite0.set_image(&sprite.plane01)?
+            self.sprite1.set_image(&sprite.plane23)?
+            return self.show(sprite, x, y)
+        }
         self.sprite0.set_image(&sprite.plane01)?
         self.sprite1.set_image(&sprite.plane23)?
         return Result::Ok(())
@@ -834,7 +855,7 @@ impl AttachedSpriteHandle {
         unsafe {
             let colors_ptr: *Color = (*Color)colors
             for i in 0..15 {
-                let color_index_offset = (16 + i) * 2
+                let color_index_offset = (17 + i) * 2
                 let color_reg_offset = $180 + (u32)color_index_offset
                 let color_reg = (*u16)((u32)self.sprite0.custom + color_reg_offset)
                 let (r4, g4, b4) = colors_ptr[i].to_rgb4()
@@ -873,7 +894,7 @@ impl AttachedSpriteData {
     /// # Ownership
     /// Arguments marked `consuming` transfer ownership to this call.
     pub fn from_sprites(consuming plane01: SpriteData, consuming plane23: SpriteData) -> Result<AttachedSpriteData, GraphicsError> {
-        if plane01.height() != plane23.height() {
+        if plane01.height() != plane23.height() || plane01.width() != plane23.width() {
             return Result::Err(GraphicsError::InvalidSpriteData)
         }
 
@@ -894,14 +915,44 @@ impl AttachedSpriteData {
     /// # Returns
     /// The requested value on success; the error value explains why the operation could not complete.
     pub fn from_raw(data: *u16, len: u32) -> Result<AttachedSpriteData, GraphicsError> {
-        if len < 6 {
+        return AttachedSpriteData::from_raw_width(data, len, 16)
+    }
+
+    /// Copies interleaved four-plane sprite words into an attached AGA sprite.
+    /// Widths above 16 require AGA and expand each plane block to `width / 16` words.
+    ///
+    /// # Parameters
+    /// * `data` - Control, interleaved pixel, and terminator blocks.
+    /// * `len` - Number of 16-bit words in `data`.
+    /// * `width` - Sprite fetch width: 16, 32, or 64 pixels.
+    ///
+    /// # Returns
+    /// The deinterleaved attached sprite data, or a layout/chipset error.
+    pub fn from_raw_width(data: *u16, len: u32, width: u16) -> Result<AttachedSpriteData, GraphicsError> {
+        let fetch_words = fetch_words_for_width(width)
+        if fetch_words == 0 {
             return Result::Err(GraphicsError::InvalidSpriteData)
+        }
+        if width > 16 && CHIPSET() != SystemChipset::AGA {
+            return Result::Err(GraphicsError::BadDisplayMode)
+        }
+        let control_words = fetch_words * 2
+        let line_words = fetch_words * 4
+        let overhead = control_words * 2
+        if data == null || len < overhead + line_words || (len - overhead) % line_words != 0 {
+            return Result::Err(GraphicsError::InvalidSpriteData)
+        }
+        unsafe {
+            for i in (len - control_words)..len {
+                if data[i] != 0 {
+                    return Result::Err(GraphicsError::InvalidSpriteData)
+                }
+            }
         }
 
         // Calculate number of scanlines
-        let num_words = len - 2  // Subtract control words
-        let num_lines = num_words / 4  // 4 words per scanline
-        let size_per_plane = (num_lines * 2) + 2  // 2 words per line + control words
+        let num_lines = (len - overhead) / line_words
+        let size_per_plane = (num_lines + 2) * control_words
 
         // Allocate CHIP RAM for both planes
         let plane01_size = size_per_plane * 2
@@ -922,37 +973,46 @@ impl AttachedSpriteData {
                             let dest01 = (*u16)plane01_chip_mem.ptr()
                             let dest23 = (*u16)plane23_chip_mem.ptr()
 
-                            // Copy control words to both
-                            dest01[0] = src[0]
-                            dest01[1] = src[1]
-                            dest23[0] = src[0]
-                            dest23[1] = src[1]
+                            // Copy the expanded POS and CTL blocks to both sprites.
+                            for i in 0..control_words {
+                                dest01[i] = src[i]
+                                dest23[i] = src[i]
+                            }
 
                             // Deinterleave scanlines
-                            var src_idx: u32 = 2
-                            var dest_idx: u32 = 2
+                            var src_idx = control_words
+                            var dest_idx = control_words
                             for i in 0..num_lines {
-                                dest01[dest_idx] = src[src_idx]       // plane 0
-                                dest01[dest_idx + 1] = src[src_idx + 1]  // plane 1
-                                dest23[dest_idx] = src[src_idx + 2]  // plane 2
-                                dest23[dest_idx + 1] = src[src_idx + 3]  // plane 3
-                                src_idx = src_idx + 4
-                                dest_idx = dest_idx + 2
+                                for word in 0..fetch_words {
+                                    dest01[dest_idx + word] = src[src_idx + word]
+                                    dest01[dest_idx + fetch_words + word] = src[src_idx + fetch_words + word]
+                                    dest23[dest_idx + word] = src[src_idx + (fetch_words * 2) + word]
+                                    dest23[dest_idx + fetch_words + word] = src[src_idx + (fetch_words * 3) + word]
+                                }
+                                src_idx = src_idx + line_words
+                                dest_idx = dest_idx + control_words
+                            }
+                            for word in 0..control_words {
+                                dest01[dest_idx + word] = src[len - control_words + word]
+                                dest23[dest_idx + word] = src[len - control_words + word]
                             }
                         }
 
+                        let plane01_ptr = (*u16)plane01_chip_mem.into_raw()
+                        let plane23_ptr = (*u16)plane23_chip_mem.into_raw()
+
                         let plane01_data = SpriteData {
-                            data_ptr: (*u16)plane01_chip_mem.ptr(),
+                            data_ptr: plane01_ptr,
                             owns_memory: true,
                             height: (u16)num_lines,
-                            width: 16,
+                            width: width,
                         }
 
                         let plane23_data = SpriteData {
-                            data_ptr: (*u16)plane23_chip_mem.ptr(),
+                            data_ptr: plane23_ptr,
                             owns_memory: true,
                             height: (u16)num_lines,
-                            width: 16,
+                            width: width,
                         }
 
                         return Result::Ok(AttachedSpriteData {
@@ -973,6 +1033,14 @@ impl AttachedSpriteData {
     pub fn height(&self) -> u16 {
         return self.plane01.height()
     }
+
+    /// Returns the hardware fetch width in pixels.
+    ///
+    /// # Returns
+    /// 16, 32, or 64.
+    pub fn width(&self) -> u16 {
+        return self.plane01.width()
+    }
 }
 
 // Read hardware sprite collision register
@@ -992,10 +1060,7 @@ pub fn read_sprite_collisions() -> u16 {
 // Collisions are cleared by writing to the CLXDAT register
 /// Applies clear sprite collisions to the module.
 pub fn clear_sprite_collisions() {
-    unsafe {
-        let clxdat = (*u16)$DFF00E
-        *clxdat = $FFFF  // Write to clear all collision bits
-    }
+    let _ = read_sprite_collisions()
 }
 
 // Check if a specific sprite channel is free
@@ -1022,5 +1087,19 @@ pub fn is_channel_free(channel: u8) -> bool {
 pub fn release_all_sprites() {
     unsafe {
         SPRITE_CHANNELS_ALLOCATED = 0
+        SPRITE_CHANNELS_VISIBLE = 0
+        let dmacon = (*u16)$DFF096
+        *dmacon = $0020
+        DMA_ENABLED = false
+        WaitTOF()
+        if CHIPSET() == SystemChipset::AGA {
+            let fmode = (*u16)$DFF1FC
+            *fmode = 0
+        }
+        SPRITE_FETCH_WIDTH = 16
+        if BLANK_SPRITE != null {
+            FreeVec((*u8)BLANK_SPRITE)
+            BLANK_SPRITE = null
+        }
     }
 }

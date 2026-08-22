@@ -1,0 +1,114 @@
+from std::test::test import expect
+from amiga::sys::exec::memory::streamable import ChipStream, Streamable, StreamBufferSet
+
+static SOURCE: [u8] = [
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+    16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+    32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
+    48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
+    64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79,
+    80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95,
+]
+
+fn source_ptr() -> *u8 { return unsafe { (*u8)&SOURCE[0] } }
+
+struct TestStream { data: *u8, size: u32 }
+
+impl Streamable for TestStream {
+    fn stream_data(&self) -> *u8 { return self.data }
+    fn stream_size(&self) -> u32 { return self.size }
+    fn suggested_buffer_size(&self) -> u32 { return 16384 }
+    fn suggested_buffer_count(&self) -> u8 { return 3 }
+}
+
+// @covers amiga::sys::exec::memory::streamable::Streamable::stream_data()
+// @covers amiga::sys::exec::memory::streamable::Streamable::stream_size()
+// @covers amiga::sys::exec::memory::streamable::Streamable::suggested_buffer_count()
+// @covers amiga::sys::exec::memory::streamable::Streamable::suggested_buffer_size()
+// @covers amiga::sys::exec::memory::streamable::StreamBuffer::filled()
+// @covers amiga::sys::exec::memory::streamable::StreamBuffer::is_allocated()
+// @covers amiga::sys::exec::memory::streamable::StreamBuffer::offset()
+// @covers amiga::sys::exec::memory::streamable::StreamBuffer::ptr()
+// @covers amiga::sys::exec::memory::streamable::StreamBufferSet::allocate(u8, u32)
+// @covers amiga::sys::exec::memory::streamable::StreamBufferSet::count()
+// @covers amiga::sys::exec::memory::streamable::StreamBufferSet::fill(u8, *u8, u32, u32)
+// @covers amiga::sys::exec::memory::streamable::StreamBufferSet::flush_cache()
+// @covers amiga::sys::exec::memory::streamable::StreamBufferSet::free()
+// @covers amiga::sys::exec::memory::streamable::StreamBufferSet::get(u8)
+// @covers amiga::sys::exec::memory::streamable::StreamBufferSet::get_mut(u8)
+// @covers amiga::sys::exec::memory::streamable::StreamBufferSet::new()
+// @covers amiga::sys::exec::memory::streamable::StreamBufferSet::size()
+@test("stream buffer sets allocate, fill, expose, and free chip buffers")
+pub fn stream_buffer_contracts() {
+    let asset = TestStream { data: source_ptr(), size: 96 }
+    expect(asset.stream_data() == source_ptr() && asset.stream_size() == 96, "stream trait exposes source")
+    expect(asset.suggested_buffer_count() == 3 && asset.suggested_buffer_size() == 16384,
+        "stream trait defaults are stable")
+
+    var buffers = StreamBufferSet::new()
+    expect(buffers.allocate(0, 16).is_err(), "zero buffers are rejected")
+    expect(buffers.allocate(2, 15).is_ok(), "odd buffer sizes align and allocate")
+    expect(buffers.count() == 2 && buffers.size() == 16, "buffer set retains aligned geometry")
+    expect(buffers.fill(2, source_ptr(), 96, 0).is_err(), "invalid buffer index is rejected")
+    expect(buffers.fill(0, source_ptr(), 96, 16).unwrap() == 16, "buffer copies one chunk")
+    match buffers.get(0) {
+        Option::Some(buffer) => {
+            expect(buffer.is_allocated() && buffer.ptr() != null, "buffer is allocated")
+            expect(buffer.filled() == 16 && buffer.offset() == 16, "buffer records fill metadata")
+            expect(unsafe { buffer.ptr()[0] == 16 && buffer.ptr()[15] == 31 }, "buffer preserves bytes")
+        },
+        Option::None => expect(false, "filled buffer is available"),
+    }
+    expect(buffers.get(2).is_none(), "out-of-range immutable access is absent")
+    expect(buffers.get_mut(0).is_some() && buffers.get_mut(2).is_none(), "mutable access is bounds checked")
+    buffers.flush_cache()
+    buffers.free()
+    expect(buffers.count() == 0 && buffers.size() == 0, "explicit free clears buffer geometry")
+}
+
+// @covers amiga::sys::exec::memory::streamable::ChipStream::advance()
+// @covers amiga::sys::exec::memory::streamable::ChipStream::buffer_count()
+// @covers amiga::sys::exec::memory::streamable::ChipStream::buffer_size()
+// @covers amiga::sys::exec::memory::streamable::ChipStream::current_buffer()
+// @covers amiga::sys::exec::memory::streamable::ChipStream::current_buffer_filled()
+// @covers amiga::sys::exec::memory::streamable::ChipStream::fill_all()
+// @covers amiga::sys::exec::memory::streamable::ChipStream::from_asset(*u8, u32, u8, u32)
+// @covers amiga::sys::exec::memory::streamable::ChipStream::get_buffer(u8)
+// @covers amiga::sys::exec::memory::streamable::ChipStream::is_finished()
+// @covers amiga::sys::exec::memory::streamable::ChipStream::is_looping()
+// @covers amiga::sys::exec::memory::streamable::ChipStream::new(*u8, u32, u8, u32)
+// @covers amiga::sys::exec::memory::streamable::ChipStream::position()
+// @covers amiga::sys::exec::memory::streamable::ChipStream::progress()
+// @covers amiga::sys::exec::memory::streamable::ChipStream::reset()
+// @covers amiga::sys::exec::memory::streamable::ChipStream::set_looping(bool)
+// @covers amiga::sys::exec::memory::streamable::ChipStream::source_ptr()
+// @covers amiga::sys::exec::memory::streamable::ChipStream::total_size()
+@test("chip streams advance finite and looping sources")
+pub fn chip_stream_contracts() {
+    var stream = ChipStream::new(source_ptr(), 96, 3, 16).unwrap()
+    expect(stream.source_ptr() == source_ptr() && stream.total_size() == 96, "stream retains source")
+    expect(stream.buffer_count() == 3 && stream.buffer_size() == 16, "stream retains buffer geometry")
+    expect(stream.fill_all().is_ok(), "stream primes every buffer")
+    expect(stream.current_buffer() != null && stream.current_buffer_filled() == 16, "current buffer is primed")
+    expect(stream.get_buffer(2).is_some() && stream.get_buffer(3).is_none(), "stream buffer access is bounded")
+    var advances: u32 = 0
+    var more = true
+    while more && advances < 8 {
+        more = stream.advance().unwrap()
+        advances++
+    }
+    expect(!more && stream.is_finished(), "finite stream reaches its end")
+    expect(stream.position() >= 96 && stream.progress() >= 100, "finite stream reports completion")
+    stream.reset()
+    expect(stream.position() == 0 && !stream.is_finished(), "reset returns to the beginning")
+
+    var looping = ChipStream::from_asset(source_ptr(), 64, 2, 16).unwrap()
+    looping.set_looping(true)
+    expect(looping.is_looping() && looping.fill_all().is_ok(), "looping stream primes")
+    var index: u32 = 0
+    while index < 6 {
+        expect(looping.advance().unwrap(), "looping stream keeps advancing")
+        index++
+    }
+    expect(!looping.is_finished(), "looping stream never reports finished")
+}

@@ -30,10 +30,30 @@ fn new_priority_item(val: u32, priority: i8) -> PriorityItem {
 // Basic Creation Tests
 // ============================================================================
 
+// This suite exercises every PriorityList operation below.
+// @covers amiga::sys::exec::intrusive_list::PriorityList::add_head(*T)
+// @covers amiga::sys::exec::intrusive_list::PriorityList::add_tail(*T)
+// @covers amiga::sys::exec::intrusive_list::PriorityList::as_list()
+// @covers amiga::sys::exec::intrusive_list::PriorityList::enqueue(*T)
+// @covers amiga::sys::exec::intrusive_list::PriorityList::first()
+// @covers amiga::sys::exec::intrusive_list::PriorityList::init()
+// @covers amiga::sys::exec::intrusive_list::PriorityList::is_empty()
+// @covers amiga::sys::exec::intrusive_list::PriorityList::last()
+// @covers amiga::sys::exec::intrusive_list::PriorityList::len()
+// @covers amiga::sys::exec::intrusive_list::PriorityList::new()
+// @covers amiga::sys::exec::intrusive_list::PriorityList::next(*T)
+// @covers amiga::sys::exec::intrusive_list::PriorityList::prev(*T)
+// @covers amiga::sys::exec::intrusive_list::PriorityList::remove(*T)
+// @covers amiga::sys::exec::intrusive_list::PriorityList::remove_head()
+// @covers amiga::sys::exec::intrusive_list::PriorityList::remove_tail()
+// @covers amiga::sys::exec::intrusive_list::init_node(*Node, i8, *u8)
 @test("New priority list should be empty")
 pub fn test_new_list_is_empty() {
     var list = PriorityList::<PriorityItem>::new()
     list.init()
+    var item = new_priority_item(1, 0)
+    init_node(&var item.node, 5, "tier12-priority")
+    expect_true(item.node.ln_Pri == 5 && item.node.ln_Name != null, "node initializer retains metadata")
     expect_true(list.is_empty(), "new list should be empty")
 }
 

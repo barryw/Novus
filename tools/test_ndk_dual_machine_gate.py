@@ -27,6 +27,8 @@ class _DualGateTest(unittest.TestCase):
                 report.write_text(json.dumps({"configuration": config, "tests": []}))
                 return SimpleNamespace(returncode=0)
             if Path(cmd[1]).name == "verify_ndk_tests.py":
+                self.assertEqual(Path.cwd(), cwd)
+                self.assertNotIn("--require-complete", cmd)
                 json_index = cmd.index("--json")
                 output = Path(cmd[json_index + 1])
                 output.parent.mkdir(parents=True, exist_ok=True)
@@ -53,6 +55,7 @@ class _DualGateTest(unittest.TestCase):
                 with patch.object(sys, "argv", [
                     "tools/amiga/run_ndk_dual_machine_gate.py",
                     "--build-dir", str(build_dir),
+                    "--evidence-dir", str(Path(temporary) / "evidence"),
                     "--configuration", "A1200",
                     "--require-complete",
                     "--layer", "amiga",

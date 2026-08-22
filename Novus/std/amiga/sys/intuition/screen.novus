@@ -12,7 +12,14 @@ from amiga::raw::structs import TagItem, Screen, RastPort, BitMap, ViewPort
 from amiga::raw::intuition import OpenScreenTagList, CloseScreen, ScreenToFront, ScreenToBack, MoveScreen, ShowTitle, OpenWindowTagList
 from amiga::raw::consts import TAG_DONE, SA_*, WA_*, WFLG_*, IDCMP_*, CUSTOMSCREEN, OSCAN_TEXT, HIRES_KEY, LORESLACE_KEY, HIRESLACE_KEY, NTSC_MONITOR_ID, PAL_MONITOR_ID
 from amiga::sys::intuition::window import WindowHandle, open_window
-from amiga::sys::hardware::chipset import DISPLAY, DisplayType
+from amiga::sys::hardware::chipset import CHIPSET, DISPLAY, DisplayType, SystemChipset
+
+fn display_depth_supported(depth: i16) -> bool {
+    if depth < 1 || depth > 8 { return false }
+    // Six-plane EHB/HAM modes are available on older chipsets. Intuition
+    // validates the selected mode; only the seventh and eighth planes are AGA-only.
+    return depth <= 6 || matches!(CHIPSET(), SystemChipset::AGA)
+}
 
 // ============================================================================
 // ScreenHandle - RAII wrapper for Intuition screens
@@ -234,6 +241,7 @@ impl ScreenHandle {
     /// ```
     @suppress("W0002", "Casting depth to u32 for tag")
     pub fn lores(title: Str, depth: i16) -> Result<ScreenHandle, IntuitionError> {
+        if !display_depth_supported(depth) { return Result::Err(IntuitionError::BadDisplayMode) }
         // Auto-detect PAL/NTSC at runtime
         let display_type = DISPLAY()
         let monitor_id = match display_type {
@@ -270,6 +278,7 @@ impl ScreenHandle {
     /// ```
     @suppress("W0002", "Casting depth to u32 for tag")
     pub fn hires(title: Str, depth: i16) -> Result<ScreenHandle, IntuitionError> {
+        if !display_depth_supported(depth) { return Result::Err(IntuitionError::BadDisplayMode) }
         // Auto-detect PAL/NTSC at runtime
         let display_type = DISPLAY()
         let monitor_id = match display_type {
@@ -309,6 +318,7 @@ impl ScreenHandle {
     /// ```
     @suppress("W0002", "Casting dimensions to u32 for tags")
     pub fn custom(title: Str, width: i16, height: i16, depth: i16) -> Result<ScreenHandle, IntuitionError> {
+        if !display_depth_supported(depth) { return Result::Err(IntuitionError::BadDisplayMode) }
         let tags = [
             TagItem { ti_Tag: SA_Width, ti_Data: (u32)width },
             TagItem { ti_Tag: SA_Height, ti_Data: (u32)height },
@@ -333,6 +343,7 @@ impl ScreenHandle {
     /// ```
     @suppress("W0002", "Casting depth to u32 for tag")
     pub fn lores_lace(title: Str, depth: i16) -> Result<ScreenHandle, IntuitionError> {
+        if !display_depth_supported(depth) { return Result::Err(IntuitionError::BadDisplayMode) }
         // Auto-detect PAL/NTSC at runtime
         let display_type = DISPLAY()
         let monitor_id = match display_type {
@@ -370,6 +381,7 @@ impl ScreenHandle {
     /// ```
     @suppress("W0002", "Casting depth to u32 for tag")
     pub fn hires_lace(title: Str, depth: i16) -> Result<ScreenHandle, IntuitionError> {
+        if !display_depth_supported(depth) { return Result::Err(IntuitionError::BadDisplayMode) }
         // Auto-detect PAL/NTSC at runtime
         let display_type = DISPLAY()
         let monitor_id = match display_type {
@@ -555,6 +567,9 @@ impl ScreenBuilder {
     /// Returns Err if screen fails to open.
     @suppress("W0002", "Casting values to u32 for tags")
     pub fn build(consuming self) -> Result<ScreenHandle, IntuitionError> {
+        if !display_depth_supported(self.depth) {
+            return Result::Err(IntuitionError::BadDisplayMode)
+        }
         // Auto-detect PAL/NTSC at runtime if no display_id explicitly set
         let display_type = DISPLAY()
         let default_monitor = match display_type {
@@ -578,6 +593,8 @@ impl ScreenBuilder {
         // Convert booleans to Amiga TRUE/FALSE
         let show_title_val: u32 = if self.show_title { 1 } else { 0 }
         let quiet_val: u32 = if self.quiet { 1 } else { 0 }
+        let behind_val: u32 = if self.behind { 1 } else { 0 }
+        let autoscroll_val: u32 = if self.autoscroll { 1 } else { 0 }
 
         let tags = [
             TagItem { ti_Tag: SA_DisplayID, ti_Data: display },
@@ -588,6 +605,9 @@ impl ScreenBuilder {
             TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
             TagItem { ti_Tag: SA_ShowTitle, ti_Data: show_title_val },
             TagItem { ti_Tag: SA_Quiet, ti_Data: quiet_val },
+            TagItem { ti_Tag: SA_Behind, ti_Data: behind_val },
+            TagItem { ti_Tag: SA_AutoScroll, ti_Data: autoscroll_val },
+            TagItem { ti_Tag: SA_Overscan, ti_Data: self.overscan },
             TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
         ]
 

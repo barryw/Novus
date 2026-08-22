@@ -377,7 +377,10 @@ impl ApplicationWindow {
     /// # Ownership
     /// Arguments marked `consuming` transfer ownership to this call.
     pub fn alert_error<E>(&self, title: Str, consuming error: E) where E: Error {
-        alert_on(self.system.as_raw(), title.as_cstr(), error.message())
+        match unsafe { Str::from_cstr(error.message()) } {
+            Option::Some(message) => self.alert(title, message),
+            Option::None => self.alert(title, ""),
+        }
     }
 
     /// Displays a confirmation request using `ApplicationWindow`.
