@@ -41,7 +41,6 @@
 from std::core import Option, Result, Drop
 from std::string import Str
 from amiga::raw::consts import DMAF_SETCLR, DMAF_MASTER, DMAF_AUD0, DMAF_AUD1, DMAF_AUD2, DMAF_AUD3
-from amiga::raw::exec import FreeMem
 from amiga::sys::hardware::registers import CUSTOM_BASE
 from amiga::sys::audio::errors import AudioError
 from amiga::sys::exec::memory::chip import ChipAsset, Priority, is_chip_ram, ChipCacheError
@@ -482,6 +481,7 @@ extern fn __novus_ptplayer_get_song_length() -> u8
 
 // Helper to call a function pointer stored as u32 address
 extern fn __novus_call_u8_callback(func_addr: u32, arg: u8)
+extern fn __novus_call_u32_callback(func_addr: u32, arg: u32)
 
 // Get the CPU's Vector Base Register (VBR)
 // All supported CPUs expose the actual VBR value.
@@ -617,16 +617,20 @@ pub struct ModPlayer {
     on_song_end: u32,
 }
 
-// Global counter for generating unique asset IDs
 static var g_next_asset_id: u32 = 1
+static var g_mod_cache_release: u32 = 0
 
-/// Generate a unique asset ID for ChipCache
 fn next_asset_id() -> u32 {
     unsafe {
         let id = g_next_asset_id
         g_next_asset_id++
         return id
     }
+}
+
+fn release_cached_mod(asset_id: u32) {
+    ChipCache::unpin(asset_id)
+    ChipCache::evict(asset_id)
 }
 
 impl ModPlayer {
@@ -720,10 +724,8 @@ impl ModPlayer {
     /// player.play()  // Asset is pinned during playback
     /// ```
     pub fn init_asset(&var self, asset: &ModAsset, start_position: u8) -> Result<(), AudioError> {
-        // Unpin and release any previously cached asset
         if self.cache_asset_id != 0 {
-            ChipCache::unpin(self.cache_asset_id)
-            ChipCache::evict(self.cache_asset_id)
+            release_cached_mod(self.cache_asset_id)
             self.cache_asset_id = 0
         }
 
@@ -736,13 +738,12 @@ impl ModPlayer {
             return self.init(data_ptr, start_position)
         }
 
-        // Generate a new asset ID and cache to chip RAM
         let asset_id = next_asset_id()
         let result = ChipCache::get(asset_id, data_ptr, data_size, Priority::Normal, "MOD")
         match result {
             Result::Ok(chip_ptr) => {
-                // Track asset ID for cleanup and pin it during playback
                 self.cache_asset_id = asset_id
+                g_mod_cache_release = (u32)release_cached_mod
                 ChipCache::pin(asset_id)
                 return self.init(chip_ptr, start_position)
             },
@@ -1233,11 +1234,8 @@ impl Drop for ModPlayer {
             self.cia_installed = false
         }
 
-        // Unpin and evict any cached MOD data
-        // We evict on drop since the MOD is no longer needed
         if self.cache_asset_id != 0 {
-            ChipCache::unpin(self.cache_asset_id)
-            ChipCache::evict(self.cache_asset_id)
+            __novus_call_u32_callback(g_mod_cache_release, self.cache_asset_id)
             self.cache_asset_id = 0
         }
     }

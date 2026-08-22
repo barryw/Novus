@@ -81,6 +81,14 @@ void __novus_call_u8_callback(uint32_t func_addr, unsigned char arg) {
     }
 }
 
+void __novus_call_u32_callback(uint32_t func_addr, uint32_t arg) {
+    if (func_addr != 0) {
+        typedef void (*callback_fn)(uint32_t);
+        callback_fn fn = (callback_fn)func_addr;
+        fn(arg);
+    }
+}
+
 /* Song position and length are accessed via assembly stubs in ptplayer_stubs.asm
  * because calculating offsets from C is error-prone with all the conditional assembly.
  *

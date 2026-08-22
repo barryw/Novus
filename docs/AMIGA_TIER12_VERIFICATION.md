@@ -59,10 +59,66 @@ microbenchmarks.
 | Exclusively timed callables | 73 | 73 |
 
 Callable size probes link one callable at a time and subtract a baseline that
-imports the same module without calling it. All 1,597 callables have a positive
-delta: 32–29,456 bytes, median 576 bytes, with aggregate deltas of 3,518,880
-bytes. The larger deltas are expected for high-level entry points that pull in
-owned error handling and lower-tier implementation code.
+imports the same module without calling it. The initial full-campaign snapshot
+measured all 1,597 callables: 32–29,456 bytes, median 576 bytes, with aggregate
+deltas of 3,518,880 bytes. These deltas deliberately double-count shared code
+and are useful for finding dependency fan-out; they are not library file sizes.
+The targeted final probes below supersede that snapshot for the optimized
+modules.
+
+### Optimization audit (2026-08-22)
+
+The Tier 1–3 size and guest-timing evidence was ranked before changing code.
+Tier 3 needs no general size rewrite: its 1,397 raw NDK thunks have a 132-byte
+median and a 1,368-byte maximum. The longest guest timings in all tiers belong
+to modal requesters, viewers, filesystem operations, and deliberate waits;
+those measurements describe OS service time rather than wrapper CPU overhead.
+
+The actionable bloat was in `ModPlayer`, `AudioChannel`, `ChipCache`, and
+`ChipPool`. Both hardware destructors referenced the complete cache and pool
+implementation. `ModPlayer` now links cache cleanup only when `init_asset`
+installs it. `AudioChannel::play_asset` owns its one required chip allocation
+directly instead of generating a cache key that could never be reused. Cache
+entries no longer retain unused source pointers, debug names, or redundant
+allocation flags, and each Exec pool is created only when its size class is
+first used.
+
+All 132 affected callable probes compile and link. The current probes compare
+as follows; the cache/pool “before” values are the original campaign reference:
+
+| Module | Improved callables | Regressed | Probe-delta sum before | After |
+| --- | ---: | ---: | ---: | ---: |
+| `hardware::ptplayer` | 33 / 45 | 0 | 808,656 B | 356,884 B |
+| `hardware::audio` | 19 / 66 | 0 | 357,396 B | 76,440 B |
+| `memory::chip_cache` | 12 / 12 | 0 | 141,496 B | 71,144 B |
+| `memory::chip_pool` | 5 / 9 (4 unchanged) | 0 | 19,396 B | 13,136 B |
+
+The sums compare independently linked probes and are not a combined-library
+file size. Representative deltas are `ModPlayer::new` 24,196→9,844 bytes,
+`ModPlayer::play` 24,724→10,212, `AudioChannel::acquire` 15,224→672,
+`AudioChannel::play_asset` 20,868→1,892, and `AudioChannel::stop`
+15,252→700. Cache-aware entry points retain the implementation they need.
+
+Actual final executable sizes provide the non-additive view:
+
+| Program | Bytes |
+| --- | ---: |
+| Minimal `ModPlayer::new` program | 10,688 |
+| Minimal `AudioChannel::acquire` program | 1,516 |
+| Generated program calling all 45 PTPlayer APIs once | 45,508 |
+| Generated program calling all 66 hardware-audio APIs once | 25,912 |
+| 20-second headed MOD demo | 432,388 |
+| Embedded `GSLINGER.MOD` inside that demo | 406,354 |
+| Demo executable excluding the embedded MOD bytes | 26,034 |
+
+The final `release-o1` runtime gates pass with guest benchmarks and memory
+checks on both machines. The three PTPlayer tests total 1.143 ms on A4000 and
+9.136 ms on A1200; the five hardware-audio tests total 3.246 ms and 15.780 ms
+respectively. The same 432,388-byte demo played the complete MOD audibly for
+20 seconds on headed A1200 and A4000 sessions, sequentially, and exited cleanly
+on both; playback was also confirmed by the listener. The optimization removes
+link-time bloat without claiming a CPU speedup for unchanged playback and OS
+service paths.
 
 ## AGA audit
 

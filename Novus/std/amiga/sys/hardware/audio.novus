@@ -32,9 +32,8 @@
 
 from std::core import Option, Result, Drop
 from std::string import Str
-from amiga::raw::exec import AllocVec, FreeVec, CopyMem, FreeMem
+from amiga::raw::exec import AllocVec, FreeVec, CopyMem
 from amiga::raw::graphics import WaitBlit
-from amiga::sys::exec::critical import CriticalSection
 from amiga::raw::exec import CreateMsgPort, DeleteMsgPort, CreateIORequest, DeleteIORequest
 from amiga::raw::exec import OpenDevice, CloseDevice, DoIO, BeginIO, AbortIO, WaitIO
 from amiga::raw::consts import MEMF_CHIP, MEMF_CLEAR, DMAF_SETCLR, DMAF_MASTER
@@ -43,24 +42,8 @@ from amiga::raw::structs import IOAudio, IORequest, MsgPort
 from amiga::sys::hardware::registers import CUSTOM_BASE, DMACON, INTREQ, ADKCON, VPOSR
 from amiga::sys::hardware::paula import period_from_hz, hz_from_period, channel_base_offset, channel_dma_bit, channel_int_bit, is_valid_period, is_valid_volume, is_valid_channel, PAULA_MAX_VOLUME, PAULA_MIN_PERIOD, PAULA_MAX_PERIOD, PAULA_MAX_LENGTH_WORDS, PAULA_MAX_LENGTH_BYTES, PAULA_PAL_CLOCK, PAULA_NTSC_CLOCK, PERIOD_11025_PAL, PERIOD_11025_NTSC, AUD0LCH
 from amiga::sys::audio::errors import AudioError
-from amiga::sys::exec::memory::chip import is_chip_ram, ChipCacheError, Priority
+from amiga::sys::exec::memory::chip import is_chip_ram, copy_to_chip, ChipCacheError, Priority
 from amiga::sys::exec::memory::chip_cache import ChipCache
-
-// Global counter for generating unique asset IDs for audio samples
-static var g_audio_next_asset_id: u32 = $10000  // Start high to avoid collision with MOD IDs
-
-
-/// Generate a unique asset ID for ChipCache
-/// Thread-safe: uses CriticalSection RAII guard to prevent race conditions
-fn next_audio_asset_id() -> u32 {
-    let _guard = CriticalSection::enter()
-    unsafe {
-        let id = g_audio_next_asset_id
-        g_audio_next_asset_id++
-        return id
-    }
-    // Permit() called automatically when _guard drops
-}
 
 // ============================================================================
 // Playback Mode
@@ -391,9 +374,8 @@ pub struct AudioChannel {
     volume: u16,       // Current volume setting
     /// The active value stored by `AudioChannel`.
     active: bool,      // Is DMA enabled for this channel?
-    // ChipCache asset ID for the currently playing sample (0 if none)
-    /// The cache asset id value stored by `AudioChannel`.
-    cache_asset_id: u32,
+    // Owned chip RAM copy for play_asset() (null if borrowing chip RAM)
+    owned_chip_ptr: *u8,
 }
 
 impl AudioChannel {
@@ -434,7 +416,7 @@ impl AudioChannel {
             period: PERIOD_11025_PAL,  // Default ~11 kHz
             volume: PAULA_MAX_VOLUME,  // Default max volume
             active: false,
-            cache_asset_id: 0,
+            owned_chip_ptr: null,
         })
     }
 
@@ -770,11 +752,9 @@ impl AudioChannel {
     /// // Asset is unpinned and evicted automatically when channel is dropped
     /// ```
     pub fn play_asset(&var self, data: *u8, size: u32, period: u16, mode: PlaybackMode) -> Result<(), AudioError> {
-        // Unpin and release any previously cached asset
-        if self.cache_asset_id != 0 {
-            ChipCache::unpin(self.cache_asset_id)
-            ChipCache::evict(self.cache_asset_id)
-            self.cache_asset_id = 0
+        if self.owned_chip_ptr {
+            FreeVec(self.owned_chip_ptr)
+            self.owned_chip_ptr = null
         }
 
         // If already in chip RAM, play directly
@@ -783,25 +763,14 @@ impl AudioChannel {
             return self.play_raw(data, length_words, period, mode)
         }
 
-        // Generate a new asset ID and cache to chip RAM
-        let asset_id = next_audio_asset_id()
-        let chip_result = ChipCache::get(asset_id, data, size, Priority::High, "SFX")
-        match chip_result {
-            Result::Ok(chip_ptr) => {
-                // Track asset ID for cleanup and pin it during playback
-                self.cache_asset_id = asset_id
-                ChipCache::pin(asset_id)
-
-                // Calculate length in words
-                let length_words = (u16)((size + 1) / 2)
-
-                // Play the sample
-                return self.play_raw(chip_ptr, length_words, period, mode)
-            },
-            Result::Err(_) => {
-                return Result::Err(AudioError::AllocationFailed)
-            }
+        let padded_size = (size + 1) & ~(u32)1
+        let chip_ptr = (*u8)AllocVec(padded_size, MEMF_CHIP | MEMF_CLEAR)
+        if !chip_ptr {
+            return Result::Err(AudioError::AllocationFailed)
         }
+        copy_to_chip(chip_ptr, data, size)
+        self.owned_chip_ptr = chip_ptr
+        return self.play_raw(chip_ptr, (u16)(padded_size / 2), period, mode)
     }
 
     /// Play an AudioAsset at its native sample rate
@@ -926,11 +895,9 @@ impl Drop for AudioChannel {
         // This prevents orphaned DMA that could play garbage
         self.stop()
 
-        // Unpin and evict any cached sample data
-        if self.cache_asset_id != 0 {
-            ChipCache::unpin(self.cache_asset_id)
-            ChipCache::evict(self.cache_asset_id)
-            self.cache_asset_id = 0
+        if self.owned_chip_ptr {
+            FreeVec(self.owned_chip_ptr)
+            self.owned_chip_ptr = null
         }
     }
 }

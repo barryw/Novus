@@ -17,36 +17,25 @@ from amiga::sys::exec::critical import CriticalSection
 // Cache Entry
 // ============================================================================
 
-/// Maximum length of debug name
-const MAX_NAME_LEN: u32 = 32
-
 /// A single entry in the chip cache
 struct CacheEntry {
     asset_id: u32,              // Unique identifier for this asset
-    source_ptr: *u8,            // Original pointer (may be fast RAM)
     chip_ptr: *u8,              // Pointer to chip RAM copy
     size: u32,                  // Size in bytes
     priority: Priority,         // Eviction priority
     pin_count: u32,             // Reference count for pinning (0 = can evict)
     last_access: u32,           // Frame number of last access (for LRU)
-    pooled: bool,               // True if allocated from pool, false if direct
-    debug_name: [u8; 32],       // Debug name for this asset
-    debug_name_len: u8,         // Length of debug name
 }
 
 impl CacheEntry {
     fn new() -> CacheEntry {
         return CacheEntry {
             asset_id: 0,
-            source_ptr: null,
             chip_ptr: null,
             size: 0,
             priority: Priority::Low,  // Use Low (0) for default to enable all-zero optimization
             pin_count: 0,
             last_access: 0,
-            pooled: false,
-            debug_name: [0; 32],
-            debug_name_len: 0,
         }
     }
 
@@ -54,17 +43,6 @@ impl CacheEntry {
         return self.chip_ptr != null
     }
 
-    fn set_name(&var self, name: Str) {
-        var max_len: u32 = MAX_NAME_LEN
-        if name.len() < MAX_NAME_LEN {
-            max_len = name.len()
-        }
-        while var i < max_len {
-            self.debug_name[i] = unsafe { name.as_ptr()[i] }
-            i++
-        }
-        self.debug_name_len = (u8)max_len
-    }
 }
 
 // ============================================================================
@@ -129,15 +107,11 @@ pub struct ChipCache {
 static var g_chip_cache: ChipCache = ChipCache {
     entries: [CacheEntry {
         asset_id: 0,
-        source_ptr: null,
         chip_ptr: null,
         size: 0,
         priority: Priority::Low,
         pin_count: 0,
         last_access: 0,
-        pooled: false,
-        debug_name: [0; 32],
-        debug_name_len: 0,
     }; 128],
     entry_count: 0,
     frame_counter: 0,
@@ -171,8 +145,6 @@ impl ChipCache {
             g_chip_cache.evictions = 0
             g_chip_cache.initialized = true
 
-            // Initialize the pool
-            let _ = ChipPool::init()
         }
     }
 
@@ -193,6 +165,7 @@ impl ChipCache {
     /// when modifying the global cache state.
     pub fn get(asset_id: u32, source_ptr: *u8, size: u32, priority: Priority, name: Str) -> Result<*u8, ChipCacheError> {
         unsafe {
+            let _ = name
             if !g_chip_cache.initialized {
                 ChipCache::init()
             }
@@ -229,11 +202,8 @@ impl ChipCache {
                     // Copy data with cache flush for 68040/060 compatibility
                     copy_to_chip(chip_ptr, source_ptr, size)
 
-                    // Determine if this was a pooled allocation
-                    let pooled = size <= POOL_HUGE_SIZE
-
                     // Add to cache
-                    ChipCache::add_entry(asset_id, source_ptr, chip_ptr, size, priority, pooled, name)
+                    ChipCache::add_entry(asset_id, chip_ptr, size, priority)
 
                     return Result::Ok(chip_ptr)
                 }
@@ -502,7 +472,7 @@ impl ChipCache {
     }
 
     /// Add an entry to the cache
-    fn add_entry(asset_id: u32, source_ptr: *u8, chip_ptr: *u8, size: u32, priority: Priority, pooled: bool, name: Str) {
+    fn add_entry(asset_id: u32, chip_ptr: *u8, size: u32, priority: Priority) {
         unsafe {
             if g_chip_cache.entry_count >= MAX_CACHE_ENTRIES {
                 // Cache full - evict oldest low-priority entry
@@ -512,14 +482,11 @@ impl ChipCache {
             if g_chip_cache.entry_count < MAX_CACHE_ENTRIES {
                 var entry = &var g_chip_cache.entries[g_chip_cache.entry_count]
                 entry.asset_id = asset_id
-                entry.source_ptr = source_ptr
                 entry.chip_ptr = chip_ptr
                 entry.size = size
                 entry.priority = priority
                 entry.pin_count = 0
                 entry.last_access = g_chip_cache.frame_counter
-                entry.pooled = pooled
-                entry.set_name(name)
 
                 g_chip_cache.entry_count++
             }
@@ -535,9 +502,7 @@ impl ChipCache {
                 // The asset may have been used by the Blitter even if unpinned
                 WaitBlit()
 
-                if entry.pooled {
-                    let _ = ChipPool::free(entry.chip_ptr)
-                } else {
+                if entry.size > POOL_HUGE_SIZE || ChipPool::free(entry.chip_ptr).is_err() {
                     FreeMem(entry.chip_ptr, entry.size)
                 }
                 entry.chip_ptr = null
